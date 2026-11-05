@@ -1,0 +1,7 @@
+{
+	"name": "hello",
+	"targetType": "executable",
+	"dependencies": { "streamlitd": { "path": "../.." } },
+	"sourcePaths": ["."],
+	"importPaths": ["."]
+}

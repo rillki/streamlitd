@@ -1,0 +1,31 @@
+{
+	"name": "streamlitd",
+	"description": "Streamlit-like reactive web app framework for D",
+	"license": "MIT",
+	"authors": [
+		"Kirill Saidov"
+	],
+	"targetType": "library",
+	"dependencies": {
+		"vibe-d:http": "~>0.10.3"
+	},
+	"stringImportPaths": [
+		"assets"
+	],
+	"configurations": [
+		{
+			"name": "library"
+		},
+		{
+			"name": "unittest",
+			"sourcePaths": [
+				"source",
+				"tests/unit"
+			],
+			"importPaths": [
+				"source",
+				"tests/unit"
+			]
+		}
+	]
+}

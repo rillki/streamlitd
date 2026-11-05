@@ -1,0 +1,10 @@
+.dub
+**/.dub
+tests/e2e/node_modules
+tests/e2e/test-results
+examples/*/hello
+examples/*/widgets
+examples/*/data
+examples/*/multipage
+examples/*/themes
+examples/*/prod

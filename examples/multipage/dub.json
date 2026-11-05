@@ -1,0 +1,7 @@
+{
+	"name": "multipage",
+	"targetType": "executable",
+	"dependencies": { "streamlitd": { "path": "../.." } },
+	"sourcePaths": ["."],
+	"importPaths": ["."]
+}

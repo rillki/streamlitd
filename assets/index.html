@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>streamlitd</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="static/style.css">
+<script src="static/vendor/marked.min.js"></script>
+</head>
+<body>
+<div id="stApp" class="layout-centered no-sidebar">
+  <header id="st-header">
+    <button id="stSidebarOpen" class="icon-btn" title="Open sidebar" aria-label="Open sidebar">&#9776;</button>
+    <div class="header-spacer"></div>
+    <div id="stStatus" data-testid="st-status" aria-live="polite"></div>
+    <button id="stRerun" class="icon-btn" title="Rerun (R)" aria-label="Rerun">&#10227;</button>
+    <div id="stSettingsWrap">
+      <button id="stSettings" class="icon-btn" title="Settings" aria-label="Settings" data-testid="st-settings">&#9881;</button>
+      <div id="stSettingsPanel" hidden data-testid="st-settings-panel">
+        <h4>Appearance</h4>
+        <div class="seg" id="stModeSeg" role="radiogroup" aria-label="Mode">
+          <button type="button" data-mode="auto">System</button><button type="button" data-mode="light">Light</button><button type="button" data-mode="dark">Dark</button>
+        </div>
+        <label for="stStyleSelect">Design style</label>
+        <select id="stStyleSelect" class="st-select" data-testid="st-style-select"></select>
+        <div class="style-swatches" id="stSwatches"></div>
+      </div>
+    </div>
+  </header>
+  <aside id="stSidebar" data-testid="st-sidebar">
+    <div class="sidebar-top">
+      <div id="stLogo" class="logo-slot" hidden></div>
+      <button id="stSidebarClose" class="icon-btn" title="Close sidebar" aria-label="Close sidebar">&times;</button>
+    </div>
+    <nav id="stNav" data-testid="st-nav"></nav>
+    <div id="stRoot-1" class="block-vertical sidebar-content"></div>
+  </aside>
+  <main id="stMain">
+    <div id="stRoot-0" class="block-vertical main-content" data-testid="st-main"></div>
+    <div id="stBottom" hidden><div id="stRoot-2" class="block-vertical bottom-content"></div></div>
+  </main>
+</div>
+<div id="stRoot-3" class="dialog-root"></div>
+<div id="stToasts" data-testid="st-toasts"></div>
+<div id="stConnection" hidden><div class="conn-box"><div class="spinner-icon"></div><span>Connecting&hellip;</span></div></div>
+<script src="static/app.js"></script>
+</body>
+</html>

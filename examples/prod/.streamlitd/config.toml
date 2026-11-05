@@ -1,0 +1,9 @@
+# streamlitd config (same idea as Streamlit's .streamlit/config.toml)
+[server]
+baseUrlPath = "/app"
+maxUploadSize = 50
+scriptThreads = 4
+maxSessions = 100
+
+[theme]
+preset = "finance"
