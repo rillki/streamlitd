@@ -6,6 +6,7 @@ import std.conv : to;
 import std.path : buildPath, expandTilde;
 import std.process : environment;
 import std.string : toUpper;
+import std.algorithm : canFind;
 import vibe.data.json;
 
 import streamlitd.secrets : deepMerge;
@@ -38,6 +39,8 @@ struct ServerOptions
 	string mapTileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 	/// Attribution HTML shown on maps (`[map] attribution`).
 	string mapAttribution = "&copy; OpenStreetMap contributors";
+	/// Require login for the whole app (CLI `--auth-required`; same as `[auth] required = true`).
+	bool authRequired;
 	/// Raw `[auth]` table from the config file (see `streamlitd.auth`).
 	Json auth;
 }
@@ -63,9 +66,12 @@ Json loadConfigFiles(string explicitPath = null)
 	return cfg;
 }
 
-/// Apply a parsed config (`[server]`, `[theme]`, `[auth]`) to the options.
-void applyConfig(ref ServerOptions o, Json cfg)
+/// Apply a parsed config (`[server]`, `[theme]`, `[map]`, `[auth]`) to the options.
+/// Unknown keys (e.g. Streamlit-only options such as `runOnSave` or a `[browser]` section)
+/// are ignored and returned as warnings, so existing `.streamlit/config.toml` files work.
+string[] applyConfig(ref ServerOptions o, Json cfg)
 {
+	string[] warnings;
 	auto s = cfg["server"];
 	if (s.type == Json.Type.object)
 	{
@@ -87,7 +93,7 @@ void applyConfig(ref ServerOptions o, Json cfg)
 						o.allowedOrigins ~= e.get!string;
 					break;
 				default:
-					throw new Exception("Unknown [server] option '" ~ k ~ "' in config.toml");
+					warnings ~= "ignoring unsupported [server] option '" ~ k ~ "'";
 			}
 		}
 	}
@@ -108,9 +114,14 @@ void applyConfig(ref ServerOptions o, Json cfg)
 						cs ~= e.get!string;
 					o.theme.overrides.chartColors = cs;
 					break;
+				case "font":
+				case "headingFont":
+				case "codeFont":
+					o.theme.overrides.set(k, streamlitFont(v.get!string));
+					break;
 				default:
-					if (!o.theme.overrides.set(k, v.type == Json.Type.string ? v.get!string : v.toString))
-						throw new Exception("Unknown [theme] option '" ~ k ~ "' in config.toml");
+					if (v.type == Json.Type.object || !o.theme.overrides.set(k, v.type == Json.Type.string ? v.get!string : v.toString))
+						warnings ~= "ignoring unsupported [theme] option '" ~ k ~ "'";
 			}
 		}
 	}
@@ -124,6 +135,23 @@ void applyConfig(ref ServerOptions o, Json cfg)
 	}
 	if (cfg["auth"].type == Json.Type.object)
 		o.auth = cfg["auth"];
+	foreach (string sec, _; cfg)
+		if (!["server", "theme", "map", "auth"].canFind(sec))
+			warnings ~= "ignoring unsupported config section [" ~ sec ~ "]";
+	return warnings;
+}
+
+/// Map Streamlit's font keywords ("sans serif", "serif", "monospace") to font stacks;
+/// anything else is used as a CSS font-family as is.
+string streamlitFont(string v)
+{
+	switch (v)
+	{
+		case "sans serif": case "sans-serif": return fontSans;
+		case "serif": return fontSerif;
+		case "monospace": return fontMono;
+		default: return v;
+	}
 }
 
 /// Apply `STREAMLITD_SERVER_<KEY>` / `STREAMLITD_THEME_<KEY>` environment variables
@@ -187,8 +215,10 @@ primaryColor = "#123456"
 	assert(o.theme.preset == "ocean" && o.theme.mode == "dark" && o.theme.overrides.primaryColor == "#123456");
 	applyEnv(o, ["STREAMLITD_SERVER_PORT": "9100", "STREAMLITD_THEME_PRESET": "paper"]);
 	assert(o.port == 9100 && o.theme.preset == "paper");
-	import std.exception : assertThrown;
-	assertThrown(applyConfig(o, parseToml("[server]\nbogus = 1\n")));
+	// Streamlit-only options are ignored with a warning, not fatal
+	auto w = applyConfig(o, parseToml("[server]\nrunOnSave = true\nport = 9200\n[browser]\ngatherUsageStats = false\n[theme]\nfont = \"serif\"\n"));
+	assert(w.length == 2 && o.port == 9200, w.to!string);
+	assert(o.theme.overrides.font == fontSerif);
 	assert(normalizeBasePath("app/") == "/app");
 	assert(normalizeBasePath("/") == "");
 	assert(normalizeBasePath("") == "");

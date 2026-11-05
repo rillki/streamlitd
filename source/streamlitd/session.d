@@ -113,8 +113,10 @@ final class AppSession
 	/// and the (possibly worker-thread) script run.
 	package Mutex lock;
 	bool rerunRequested;     /// full app rerun pending
-	bool fragmentRequested;  /// fragment-only rerun pending (see `pendingFragment`)
-	package string pendingFragment;
+	/// Fragments waiting for a fragment-only rerun, in request order.
+	package string[] pendingFragments;
+	/// Fragment that owns the pending trigger (button click), if any.
+	package string pendingTriggerFragment;
 	bool closed;
 	bool running;
 	package bool runningFragment;
@@ -136,7 +138,8 @@ final class AppSession
 	package Json triggerValue;
 	package bool[string] seenIds;
 	package int[string] cursors;
-	package bool[string] mediaThisRun;
+	/// Media in use: media id -> owners ("" = main script, otherwise a fragment id).
+	package bool[string][string] mediaRefs;
 	package int runId;
 	package bool pageConfigSent;
 	package bool chatInputUsed;
@@ -148,6 +151,8 @@ final class AppSession
 
 	/// The logged-in user (`st.user`), or `Json(null)`. Set from the auth cookie on connect.
 	Json user;
+	/// True when `[auth]` is configured (login routes exist).
+	bool authEnabled;
 
 	/// Map tiles for `st.map` (from `[map]` config).
 	string mapTileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -188,7 +193,7 @@ final class AppSession
 	bool isRerunRequested()
 	{
 		synchronized (lock)
-			return rerunRequested || fragmentRequested;
+			return rerunRequested || pendingFragments.length > 0;
 	}
 
 	/// Request a rerun of only the given fragment after the current run (`st.rerun(scope: "fragment")`).
@@ -198,8 +203,7 @@ final class AppSession
 		{
 			if (!rerunRequested)
 			{
-				pendingFragment = fragmentId;
-				fragmentRequested = true;
+				queueFragment(fragmentId);
 			}
 		}
 	}
@@ -283,18 +287,24 @@ final class AppSession
 			{
 				pendingTrigger = trigger;
 				pendingTriggerValue = triggerVal;
+				pendingTriggerFragment = fragment;
 			}
-			if (fragment is null || (running && !runningFragment) || (fragmentRequested && pendingFragment != fragment)
-				|| (fragment !in knownFragments))
+			// Unknown fragments rerun the whole app; requests for different fragments are queued
+			// (they never escalate to a full rerun, so e.g. an open dialog stays open).
+			if (fragment is null || fragment !in knownFragments)
 				rerunRequested = true;
 			else
-			{
-				pendingFragment = fragment;
-				fragmentRequested = true;
-			}
+				queueFragment(fragment);
 		}
 		if (onRerunRequested !is null)
 			onRerunRequested();
+	}
+
+	private void queueFragment(string fid)
+	{
+		import std.algorithm : canFind;
+		if (!pendingFragments.canFind(fid))
+			pendingFragments ~= fid;
 	}
 
 	/// Called by every `st.*` call: aborts the run if a newer run is pending.
@@ -311,7 +321,11 @@ final class AppSession
 		}
 		bool abort;
 		synchronized (lock)
-			abort = closed || (running && (rerunRequested || (runningFragment && fragmentRequested)));
+		{
+			import std.algorithm : canFind;
+			// a fragment run is only interrupted by a full rerun or a new request for the same fragment
+			abort = closed || (running && (rerunRequested || (runningFragment && pendingFragments.canFind(currentFragment))));
+		}
 		if (abort)
 			throw new RerunException;
 	}
@@ -336,7 +350,12 @@ final class AppSession
 		synchronized (lock)
 		{
 			full = rerunRequested;
-			frag = pendingFragment;
+			// run the fragment owning a pending click first, so the click is not consumed elsewhere
+			import std.algorithm : canFind;
+			if (pendingTrigger !is null && pendingTriggerFragment.length && pendingFragments.canFind(pendingTriggerFragment))
+				frag = pendingTriggerFragment;
+			else if (pendingFragments.length)
+				frag = pendingFragments[0];
 		}
 		if (!full && frag.length && frag in fragments)
 			return runFragment(frag);
@@ -369,15 +388,31 @@ final class AppSession
 		synchronized (lock)
 		{
 			if (!isFragment)
+			{
 				rerunRequested = false;
-			fragmentRequested = false;
-			pendingFragment = null;
+				pendingFragments = null; // a full run covers every fragment
+			}
+			else
+			{
+				import std.algorithm : remove;
+				pendingFragments = pendingFragments.remove!(f => f == fragmentId);
+			}
 			updates = pendingUpdates;
 			pendingUpdates = null;
-			triggerId = pendingTrigger;
-			triggerValue = pendingTriggerValue;
-			pendingTrigger = null;
-			pendingTriggerValue = Json.undefined;
+			// a click belongs to the run of its own fragment (or to any full run)
+			if (!isFragment || pendingTriggerFragment == fragmentId)
+			{
+				triggerId = pendingTrigger;
+				triggerValue = pendingTriggerValue;
+				pendingTrigger = null;
+				pendingTriggerValue = Json.undefined;
+				pendingTriggerFragment = null;
+			}
+			else
+			{
+				triggerId = null;
+				triggerValue = Json.undefined;
+			}
 			if (pendingQuerySet)
 				queryParams = pendingQuery;
 			if (pendingPageSet)
@@ -396,7 +431,7 @@ final class AppSession
 		newWidgetMeta = null;
 		if (!isFragment)
 		{
-			mediaThisRun = null;
+			mediaRefs = null;
 			newFragments = null;
 			pageConfigSent = false;
 			chatInputUsed = false;
@@ -408,6 +443,8 @@ final class AppSession
 			root = new St(this, frag.path.dup, false, frag.formId);
 			root.fragmentId = fragmentId;
 			frag.lastRun = MonoTime.currTime;
+			foreach (mid, ref owners; mediaRefs)
+				owners.remove(fragmentId);
 			send(jo("type", "script_started", "run", runId, "fragment", fragmentId, "path", frag.path.dup));
 		}
 		else
@@ -457,13 +494,15 @@ final class AppSession
 			status = RunStatus.rerun;
 		catch (StopException)
 			status = RunStatus.stopped;
-		catch (Exception e)
+		catch (Throwable e)
 		{
+			// Errors too (e.g. RangeError from an out-of-bounds index): show them like
+			// Streamlit does instead of leaving the page stuck in "Running...".
 			status = RunStatus.error;
 			running = false;
 			try
 				root.exception(e);
-			catch (Exception) {}
+			catch (Throwable) {}
 		}
 		running = false;
 
@@ -481,6 +520,7 @@ final class AppSession
 						widgetMeta.remove(k);
 					}
 				frag.widgetIds = seenIds.dup;
+				releaseUnusedMedia();
 			}
 		}
 		else if (status == RunStatus.rerun)
@@ -500,7 +540,7 @@ final class AppSession
 					gone ~= k;
 			foreach (k; gone)
 				widgetValues.remove(k);
-			MediaManager.releaseExcept(id, mediaThisRun);
+			releaseUnusedMedia();
 		}
 
 		synchronized (lock)
@@ -515,6 +555,29 @@ final class AppSession
 		else
 			send(jo("type", "script_finished", "run", runId, "status", statusName(status)));
 		return status;
+	}
+
+	/// Record that media `mid` is used by `owner` ("" = main script, else a fragment id).
+	package void useMedia(string mid, string owner)
+	{
+		mediaRefs[mid][owner] = true;
+	}
+
+	/// Release media that no part of the page references any more.
+	private void releaseUnusedMedia()
+	{
+		bool[string] keep;
+		string[] dead;
+		foreach (mid, owners; mediaRefs)
+		{
+			if (owners.length)
+				keep[mid] = true;
+			else
+				dead ~= mid;
+		}
+		foreach (mid; dead)
+			mediaRefs.remove(mid);
+		MediaManager.releaseExcept(id, keep);
 	}
 
 	/// Register a fragment created during the current run.

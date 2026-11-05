@@ -15,6 +15,9 @@ if [ $status -ne 0 ]; then
 	exit $status
 fi
 
+echo "== doc snippets =="
+DC="$DC" python3 tools/check_doc_snippets.py || exit 1
+
 echo "== e2e (Playwright) =="
 cd tests/e2e
 [ -d node_modules ] || npm install || exit 1

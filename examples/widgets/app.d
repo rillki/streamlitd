@@ -76,7 +76,7 @@ void app(St st)
 		with (container(border: true))
 		{
 			text("A bordered container");
-			json(["answer": 42]);
+			jsonOf(["answer": 42]);
 		}
 		auto ph = empty();
 		ph.info("This placeholder was replaced...");

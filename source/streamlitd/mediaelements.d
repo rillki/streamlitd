@@ -31,7 +31,7 @@ mixin template MediaElements()
 	private string registerMedia(const(ubyte)[] data, string mime, string fileName = null)
 	{
 		auto url = MediaManager.add(sess.id, data, mime, fileName);
-		sess.mediaThisRun[url["_media/".length .. $]] = true;
+		sess.useMedia(url["_media/".length .. $], fragmentId);
 		return url;
 	}
 
@@ -50,7 +50,8 @@ mixin template MediaElements()
 		emit(jo("kind", "image", "src", src, "caption", caption, "width", width, "fullWidth", useContainerWidth));
 	}
 
-	/// `st.logo`: an image shown at the top of the sidebar (and in the header when it is collapsed).
+	/// `st.logo`: an image shown at the top of the sidebar, or in the top-left corner of the page
+	/// while the sidebar is hidden (no sidebar content) or collapsed.
 	void logo(string pathOrUrl, string link = null, string size = "medium")
 	{
 		sess.send(jo("type", "logo", "src", mediaSrc(pathOrUrl), "link", link, "size", size));

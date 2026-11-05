@@ -73,6 +73,9 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 #stSidebar { position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w); background: var(--sidebar-bg); overflow-y: auto; z-index: 60; padding: 0 1.5rem 2rem; transition: transform .2s ease; }
 .sidebar-top { height: 3.75rem; display: flex; align-items: center; justify-content: space-between; }
 .logo-slot img { display: block; max-width: 12rem; }
+.header-logo { display: none; }
+#stApp.no-sidebar .header-logo:not([hidden]), #stApp.sidebar-collapsed .header-logo:not([hidden]) { display: block; }
+#stApp.no-sidebar #stSidebarOpen { display: none; }
 .logo-slot .logo-small { height: 1.25rem; } .logo-slot .logo-medium { height: 1.75rem; } .logo-slot .logo-large { height: 2.5rem; }
 #stApp.no-sidebar #stSidebar, #stApp.sidebar-collapsed #stSidebar { transform: translateX(-100%); }
 #stApp.no-sidebar #stSidebarOpen { visibility: hidden; }

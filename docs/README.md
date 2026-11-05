@@ -1,0 +1,60 @@
+# streamlitd documentation
+
+streamlitd lets you build data apps in **D** the way you build them in Python with
+[Streamlit](https://streamlit.io). You write a plain function that runs from top to bottom on
+every interaction. You get a single self-contained binary that serves the web UI.
+
+## Start here
+
+1. [Getting started](getting-started.md): install the toolchain and run your first app in 5 minutes.
+2. [Tutorial](tutorial.md): build a sales dashboard step by step.
+3. [Core concepts](concepts.md): reruns, widget state, session state, callbacks, forms and fragments.
+
+## Guides
+
+| Guide | What it covers |
+|---|---|
+| [Layout & navigation](layout-and-navigation.md) | sidebar, columns, tabs, expanders, forms, dialogs, status, multipage apps, query params |
+| [Data & charts](data-and-charts.md) | `DataFrame`, tables, data editor, line/bar/area/scatter charts, Vega-Lite, Plotly, maps |
+| [Theming](theming.md) | the 8 design styles, light/dark mode, custom colors and fonts |
+| [Configuration](configuration.md) | `config.toml`, environment variables, command-line flags, `secrets.toml` |
+| [Deployment](deployment.md) | release builds, systemd, Docker and docker-compose, reverse proxies, scaling |
+| [Authentication](authentication.md) | password users, OIDC single sign-on (Google, Entra ID, Keycloak…), `st.user` |
+| [Custom components](custom-components.md) | static HTML/iframes and bidirectional JS components |
+| [Testing](testing.md) | headless `AppTest` unit tests and Playwright end-to-end tests |
+| [Porting from Python](porting-from-python.md) | a worked migration of a Python Streamlit app and common pitfalls |
+
+## Reference
+
+| Page | |
+|---|---|
+| [Cheat sheet (Python → D)](cheatsheet.md) | every Streamlit call and its streamlitd equivalent |
+| [API reference](api-reference.md) | every public function with its signature (generated from the sources) |
+| [Troubleshooting & FAQ](troubleshooting.md) | common problems and their fixes |
+| [Architecture](architecture.md) | how it works inside: modules, protocol, frontend (for contributors) |
+
+## Examples
+
+The [`examples/`](../examples) folder contains runnable apps. Each one is used by the end-to-end tests:
+
+| Example | Shows |
+|---|---|
+| `hello` | the smallest app: text, input, button, session state, sidebar |
+| `widgets` | every input widget, layout containers, forms, status elements |
+| `data` | DataFrame, dataframe/table/data editor, all chart types, upload/download, images |
+| `multipage` | `st.navigation`, chat UI, query params |
+| `themes` | design styles and the viewer style menu |
+| `fragments` | `st.fragment`, auto-refresh, `st.dialog`, `st.status`, pills/segmented/feedback |
+| `extras` | LaTeX, code highlighting, Plotly, maps, custom components |
+| `prod` | `config.toml`, secrets, base URL path, worker threads |
+| `auth` | password and OIDC login |
+| `tutorial` | the app built in the [tutorial](tutorial.md) |
+
+Run any of them with:
+
+```sh
+cd examples/data && dub run --compiler=ldc2
+```
+
+Then open <http://localhost:8501>. The `prod` example is served under
+<http://localhost:8501/app/>, because its `.streamlitd/config.toml` sets `baseUrlPath`.

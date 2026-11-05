@@ -529,6 +529,16 @@ mixin template Widgets()
 		return i < 0 ? null : options[i];
 	}
 
+	/// `st.pills` over any option type (returns `T.init` when nothing is selected).
+	T pillsOf(T)(string label, T[] options, ptrdiff_t index = -1, string key = null, string help = null,
+		void delegate() onChange = null, bool disabled = false, string delegate(T) formatFunc = null,
+		string labelVisibility = "visible")
+	{
+		auto i = choiceIndex("pills", label, formatOptions(options, formatFunc), index, key, help, onChange,
+			disabled, labelVisibility, Json.emptyObject);
+		return i < 0 ? T.init : options[i];
+	}
+
 	/// `st.pills(selection_mode="multi")`
 	string[] pillsMulti(string label, string[] options, string[] default_ = null, string key = null,
 		string help = null, void delegate() onChange = null, bool disabled = false, string labelVisibility = "visible")
@@ -547,6 +557,16 @@ mixin template Widgets()
 		auto i = choiceIndex("segmented_control", label, options, index, key, help, onChange, disabled,
 			labelVisibility, Json.emptyObject);
 		return i < 0 ? null : options[i];
+	}
+
+	/// `st.segmented_control` over any option type (returns `T.init` when nothing is selected).
+	T segmentedControlOf(T)(string label, T[] options, ptrdiff_t index = -1, string key = null, string help = null,
+		void delegate() onChange = null, bool disabled = false, string delegate(T) formatFunc = null,
+		string labelVisibility = "visible")
+	{
+		auto i = choiceIndex("segmented_control", label, formatOptions(options, formatFunc), index, key, help,
+			onChange, disabled, labelVisibility, Json.emptyObject);
+		return i < 0 ? T.init : options[i];
 	}
 
 	/// `st.segmented_control(selection_mode="multi")`

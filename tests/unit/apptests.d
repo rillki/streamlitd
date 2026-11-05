@@ -424,3 +424,95 @@ unittest
 	assert(at.runCount == runsBefore + 1);
 	assert(at.texts("text") == ["tick"]);
 }
+
+// ---------------------------------------------------------------- D Errors are reported, not fatal
+
+unittest
+{
+	auto at = new AppTest((St st) {
+		st.text("before");
+		int[] a = [1, 2];
+		size_t i = 5;
+		st.text((a[i]).to!string); // RangeError
+	}).run();
+	assert(at.lastStatus == RunStatus.error);
+	assert(at.texts("text") == ["before"]);
+	assert(at.exceptions.length == 1);
+	assert(at.exceptions[0]["type"].get!string.canFind("RangeError") || at.exceptions[0]["type"].get!string.canFind("ArrayIndexError"), at.exceptions[0].toString);
+	assert(at.messages("script_finished").length == 1);
+}
+
+// ---------------------------------------------------------------- fragment media is released
+
+unittest
+{
+	import streamlitd.media : MediaManager;
+	int n;
+	auto at = new AppTest((St st) {
+		st.image(cast(const(ubyte)[]) "<svg>main</svg>", mime: "image/svg+xml");
+		st.fragment((St f) {
+			n++;
+			f.image(cast(const(ubyte)[]) ("<svg>" ~ n.to!string ~ "</svg>"), mime: "image/svg+xml");
+			f.button("again");
+		});
+	}).run();
+	auto sid = at.sess.id;
+	size_t owned()
+	{
+		size_t c;
+		foreach (_, f; MediaManager.files)
+			if (sid in f.owners)
+				c++;
+		return c;
+	}
+	assert(owned() == 2);
+	foreach (i; 0 .. 5)
+		at.click("again").run();
+	assert(owned() == 2, owned().to!string); // old fragment images were released, main image kept
+	assert(at.elements("image").length == 2);
+}
+
+unittest
+{
+	// st.login without [auth] is an API error (no redirect loop)
+	auto at = new AppTest((St st) { st.login(); }).run();
+	assert(at.exceptions.length == 1 && at.exceptions[0]["message"].get!string.canFind("needs authentication"));
+	assert(at.messages("navigate").length == 0);
+}
+
+unittest
+{
+	auto at = new AppTest((St st) {
+		auto n = st.pillsOf!int("N", [10, 20, 30], index: 1);
+		auto m = st.segmentedControlOf!int("M", [1, 2], formatFunc: (int v) => "#" ~ v.to!string);
+		st.text(n.to!string ~ "/" ~ m.to!string);
+	}).run();
+	assert(at.texts("text") == ["20/0"]);
+	assert(at.widget("segmented_control", "M")["options"][0].get!string == "#1");
+	at.setValue("segmented_control", "M", Json(1)).run();
+	assert(at.texts("text") == ["20/2"]);
+}
+
+// ---------------------------------------------------------------- concurrent requests for different fragments
+
+unittest
+{
+	int full, ticks, saves;
+	auto at = new AppTest((St st) {
+		full++;
+		st.fragment((St f) { ticks++; f.text("tick"); }, runEvery: 1);
+		st.fragment((St f) {
+			if (f.button("Save"))
+				saves++;
+		});
+	}).run();
+	assert(full == 1);
+	auto tickId = "f:0.0"; // fragment ids default to "f:" ~ path of the fragment block
+	// a tick is queued, then the user clicks Save in the other fragment
+	at.sess.requestRerun(null, null, Json.undefined, tickId);
+	at.click("Save");
+	at.run();
+	assert(full == 1, "different fragments must not escalate to a full rerun");
+	assert(saves == 1, "the click must reach its own fragment");
+	assert(ticks == 2);
+}

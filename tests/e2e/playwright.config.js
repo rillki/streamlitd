@@ -4,7 +4,7 @@ const os = require("os");
 const fs = require("fs");
 
 const root = path.resolve(__dirname, "../..");
-const apps = { hello: 8701, widgets: 8702, data: 8703, multipage: 8704, themes: 8705, prod: 8706, fragments: 8707, extras: 8708, auth: 8709 };
+const apps = { hello: 8701, widgets: 8702, data: 8703, multipage: 8704, themes: 8705, prod: 8706, fragments: 8707, extras: 8708, auth: 8709, tutorial: 8710 };
 // apps served under a base URL path (from their config.toml)
 const basePaths = { prod: "/app" };
 

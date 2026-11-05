@@ -135,6 +135,7 @@ private void handleWS(scope WebSocket sock) @system
 	auto sess = new AppSession(g_app, transport);
 	sess.defaultTheme = g_opts.theme;
 	sess.user = userFromRequest(g_auth, cast(HTTPServerRequest) sock.request);
+	sess.authEnabled = g_auth.enabled;
 	sess.mapTileUrl = g_opts.mapTileUrl;
 	sess.mapAttribution = g_opts.mapAttribution;
 	sess.allowThemeSwitch = g_opts.allowThemeSwitch;
@@ -393,7 +394,12 @@ int serve(AppFn app, ServerOptions opts = ServerOptions.init)
 	{
 		import streamlitd.secrets : secrets;
 		try
-			g_auth = loadAuthConfig(opts.auth, secrets().get!Json("auth"), opts.baseUrlPath);
+		{
+			auto cfgAuth = opts.auth.type == Json.Type.object ? opts.auth.clone : Json.emptyObject;
+			if (opts.authRequired)
+				cfgAuth["required"] = true;
+			g_auth = loadAuthConfig(cfgAuth, secrets().get!Json("auth"), opts.baseUrlPath);
+		}
 		catch (Exception e)
 		{
 			stderr.writeln("streamlitd: auth configuration error: ", e.msg);
@@ -450,7 +456,11 @@ string[] parseThemeOverrides(string[] args, ref ThemeTokens overrides)
 		{
 			auto kv = a["--theme.".length .. $];
 			auto eq = kv.countUntil('=');
-			if (eq < 0 || !overrides.set(kv[0 .. eq], kv[eq + 1 .. $]))
+			auto key = eq < 0 ? kv : kv[0 .. eq];
+			auto value = eq < 0 ? null : kv[eq + 1 .. $];
+			if (key == "font" || key == "headingFont" || key == "codeFont")
+				value = streamlitFont(value); // Streamlit keywords: "sans serif", "serif", "monospace"
+			if (eq < 0 || !overrides.set(key, value))
 				throw new Exception("Bad theme option '" ~ a ~ "'. Use --theme.<key>=<value>, e.g. --theme.primaryColor=#ff0000");
 		}
 		else
@@ -464,7 +474,7 @@ unittest
 	ThemeTokens t;
 	auto rest = parseThemeOverrides(["app", "--theme.primaryColor=#123456", "--port", "1", "--theme.font=serif"], t);
 	assert(rest == ["app", "--port", "1"]);
-	assert(t.primaryColor == "#123456" && t.font == "serif");
+	assert(t.primaryColor == "#123456" && t.font == fontSerif);
 	import std.exception : assertThrown;
 	assertThrown(parseThemeOverrides(["--theme.nope=1"], t));
 }
@@ -487,7 +497,8 @@ int runMain(AppFn app, string[] args)
 			else if (a.length > 9 && a[0 .. 9] == "--config=")
 				configPath = a[9 .. $];
 		}
-		applyConfig(o, loadConfigFiles(configPath));
+		foreach (w; applyConfig(o, loadConfigFiles(configPath)))
+			stderr.writeln("streamlitd: config: ", w);
 		applyEnv(o, environment.toAA());
 
 		args = parseThemeOverrides(args, o.theme.overrides);
@@ -507,6 +518,7 @@ int runMain(AppFn app, string[] args)
 			"theme-mode", "auto | light | dark", &o.theme.mode,
 			"no-theme-switch", "Hide the viewer's style menu", &noSwitch,
 			"hash-password", "Read a password from stdin and print its hash for secrets.toml", &hashPassword,
+			"auth-required", "Require login for the whole app ([auth] must be configured)", &o.authRequired,
 			"quiet|q", "Do not print the startup banner", &o.quiet);
 		if (help.helpWanted)
 		{

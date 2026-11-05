@@ -175,20 +175,28 @@ mixin template Elements()
 		metric(label, format("%g", value), delta, deltaColor, help, border);
 	}
 
-	/// `st.json`
-	void json(T)(T value, bool expanded = true)
+	/// `st.json` — a collapsible JSON viewer.
+	void json(Json value, bool expanded = true)
 	{
-		static if (isSomeString!T)
-		{
-			Json j;
-			try
-				j = parseJsonString(value);
-			catch (Exception)
-				j = Json(value);
-			emit(jo("kind", "json", "value", j, "expanded", expanded));
-		}
-		else
-			emit(jo("kind", "json", "value", toJ(value), "expanded", expanded));
+		emit(jo("kind", "json", "value", value, "expanded", expanded));
+	}
+
+	/// ditto, from JSON text (shown as a string if it does not parse).
+	void json(string jsonText, bool expanded = true)
+	{
+		Json j;
+		try
+			j = parseJsonString(jsonText);
+		catch (Exception)
+			j = Json(jsonText);
+		json(j, expanded);
+	}
+
+	/// `st.json` for any D value (struct, class, array, associative array ...), serialized to JSON.
+	/// Use `jsonOf!T(value, expanded: false)` when passing named arguments.
+	void jsonOf(T)(T value, bool expanded = true)
+	{
+		json(toJ(value), expanded);
 	}
 
 	/// `st.progress` — `value` in 0..100; returns a handle that can be updated.
@@ -259,7 +267,7 @@ mixin template Elements()
 			else static if (is(A == struct) || is(A == class) || isArray!A || isAssociativeArray!A)
 			{
 				flush();
-				json(a);
+				jsonOf(a);
 			}
 			else
 				pending ~= (pending.length ? " " : "") ~ a.to!string;

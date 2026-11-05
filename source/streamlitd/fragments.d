@@ -41,6 +41,7 @@ mixin template FragmentElements()
 {
 	/// `st.fragment`: the body reruns on its own when a widget inside it changes, without
 	/// rerunning the whole app. `runEvery` (seconds) reruns it periodically (live dashboards).
+	/// Pass a lambda `(St f) { ... }`; for a named function use `toDelegate(&fn)`.
 	void fragment(void delegate(St) body_, double runEvery = 0, string key = null)
 	{
 		auto blk = emitBlock("fragment", jo("runEvery", runEvery));
@@ -50,12 +51,6 @@ mixin template FragmentElements()
 		body_(blk);
 	}
 
-	/// ditto, for a plain function.
-	void fragment(void function(St) body_, double runEvery = 0, string key = null)
-	{
-		import std.functional : toDelegate;
-		fragment(toDelegate(body_), runEvery, key);
-	}
 
 	/// `st.dialog`: shows a modal dialog. Its widgets rerun only the dialog. The dialog stays
 	/// open while it reruns and closes on the next full rerun in which it is not opened again
@@ -71,13 +66,6 @@ mixin template FragmentElements()
 		body_(blk);
 	}
 
-	/// ditto, for a plain function.
-	void dialog(string title, void function(St) body_, string width = "small", bool dismissible = true,
-		string key = null)
-	{
-		import std.functional : toDelegate;
-		dialog(title, toDelegate(body_), width, dismissible, key);
-	}
 
 	/// `st.status`: an expandable container showing the state of a long task.
 	StatusContainer status(string label, bool expanded = false, string state = "running")

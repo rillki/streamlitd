@@ -13,6 +13,7 @@ shared static this()
 void app(St st)
 {
 	st.setPageConfig(title: "Extras", icon: "🧪", layout: Layout.wide);
+	st.logo(cast(const(ubyte)[]) `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="28"><rect width="96" height="28" rx="6" fill="#ff4b4b"/><text x="48" y="19" font-size="14" text-anchor="middle" fill="white" font-family="sans-serif">extras</text></svg>`);
 	st.title("Extras");
 
 	auto t = st.tabs(["Math & code", "Plotly", "Map", "Components"]);

@@ -1,6 +1,14 @@
 const { test } = require("@playwright/test");
 const { open, rerun, expect } = require("./helpers");
 
+test("logo shows in the header when there is no sidebar", async ({ page }) => {
+  await open(page, "extras");
+  const logo = page.getByTestId("st-header-logo").locator("img");
+  await expect(logo).toBeVisible();
+  expect(await logo.evaluate((i) => i.complete && i.naturalWidth > 0)).toBe(true);
+  await expect(page.getByTestId("st-sidebar")).not.toBeInViewport();
+});
+
 test("latex and markdown math render with KaTeX; code is highlighted", async ({ page }) => {
   await open(page, "extras");
   await expect(page.getByTestId("st-latex").locator(".katex")).toBeVisible();

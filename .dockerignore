@@ -8,3 +8,9 @@ examples/*/data
 examples/*/multipage
 examples/*/themes
 examples/*/prod
+examples/*/fragments
+examples/*/extras
+examples/*/auth
+**/secrets.toml
+examples/*/tutorial
+tests/doc-snippets

@@ -77,6 +77,9 @@ final class St
 	void login(string provider = null)
 	{
 		import std.uri : encodeComponent;
+		if (!sess.authEnabled)
+			throw new StreamlitAPIException("st.login() needs authentication to be configured: add an [auth] section " ~
+				"with users or OIDC providers to .streamlitd/secrets.toml");
 		sess.send(jo("type", "navigate", "url", "auth/login" ~ (provider.length ? "?provider=" ~ encodeComponent(provider) : "")));
 		throw new StopException;
 	}
@@ -84,6 +87,8 @@ final class St
 	/// `st.logout`: clear the login cookie.
 	void logout()
 	{
+		if (!sess.authEnabled)
+			throw new StreamlitAPIException("st.logout() needs authentication to be configured ([auth] in secrets.toml)");
 		sess.send(jo("type", "navigate", "url", "auth/logout"));
 		throw new StopException;
 	}
@@ -126,6 +131,8 @@ final class St
 			props = Json.emptyObject;
 		props["kind"] = "block";
 		props["block"] = blockType;
+		if (fragmentId.length)
+			props["fragment"] = fragmentId; // e.g. forms inside a fragment submit as fragment reruns
 		auto p = emit(props);
 		auto c = new St(sess, p, false, formId);
 		c.formClear = formClear;

@@ -1,0 +1,7 @@
+{
+	"name": "tutorial",
+	"targetType": "executable",
+	"dependencies": { "streamlitd": { "path": "../.." } },
+	"sourcePaths": ["."],
+	"importPaths": ["."]
+}

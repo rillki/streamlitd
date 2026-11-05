@@ -246,14 +246,15 @@
 
   // The scope of the current run: all roots, or only the subtree of a fragment.
   function runScopes() {
-    if (S.fragmentNode) return [S.fragmentNode];
+    if (S.fragmentRun) return S.fragmentNode ? [S.fragmentNode] : []; // unknown fragment: touch nothing
     return Object.values(S.roots);
   }
 
   function onScriptStarted(msg) {
     setRunning(true);
-    S.fragmentNode = msg && msg.fragment ? nodeAt(msg.path) : null;
-    if (!S.fragmentNode) S.navSeen = false;
+    S.fragmentRun = !!(msg && msg.fragment);
+    S.fragmentNode = S.fragmentRun ? nodeAt(msg.path) : null;
+    if (!S.fragmentRun) S.navSeen = false;
     for (const r of runScopes()) forEachNode(r, (n) => { n.fresh = false; });
     clearTimeout(S.staleTimer);
     S.staleTimer = setTimeout(() => {
@@ -267,10 +268,11 @@
     setRunning(false);
     if (status !== "rerun") {
       for (const r of runScopes()) prune(r);
-      if (!S.fragmentNode && !S.navSeen) { S.navVisible = false; $("#stNav").innerHTML = ""; }
+      if (!S.fragmentRun && !S.navSeen) { S.navVisible = false; $("#stNav").innerHTML = ""; }
     }
     for (const r of runScopes()) forEachNode(r, (n) => n.wrap.classList.remove("stale"));
     S.fragmentNode = null;
+    S.fragmentRun = false;
     updateSidebarVisibility();
     document.body.dataset.runs = String((+document.body.dataset.runs || 0) + 1);
   }
@@ -381,7 +383,8 @@
       node.wasRenderedThisRun = S.runId;
       return;
     }
-    if (sameKind && (el.kind === "vega_lite" || el.kind === "plotly") && node.update) {
+    // charts and custom components update in place (a component keeps its iframe and state)
+    if (sameKind && (el.kind === "vega_lite" || el.kind === "plotly" || el.kind === "component") && node.update) {
       node.update(el);
       node.el = el;
       return;
@@ -1819,13 +1822,16 @@
     if (ev.key === "r" || ev.key === "R") sendRerun({});
   });
 
+  // The logo goes to the top of the sidebar, and to the header while the sidebar is hidden or collapsed.
   function renderLogo(m) {
-    const img = h("img", { src: m.src, alt: "logo", class: "logo-img logo-" + (m.size || "medium") });
-    const el = m.link ? h("a", { href: m.link, target: "_blank", rel: "noopener noreferrer" }, img) : img;
-    const slot = $("#stLogo");
-    slot.innerHTML = "";
-    slot.appendChild(el);
-    slot.hidden = false;
+    for (const id of ["#stLogo", "#stHeaderLogo"]) {
+      const img = h("img", { src: m.src, alt: "logo", class: "logo-img logo-" + (m.size || "medium") });
+      const el = m.link ? h("a", { href: m.link, target: "_blank", rel: "noopener noreferrer" }, img) : img;
+      const slot = $(id);
+      slot.innerHTML = "";
+      slot.appendChild(el);
+      slot.hidden = false;
+    }
   }
 
   for (const i of [0, 1, 2, 3]) S.roots[i] = makeRoot(i);

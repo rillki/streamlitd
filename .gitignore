@@ -18,3 +18,5 @@ examples/*/extras
 examples/*/auth
 __*
 
+tests/doc-snippets/
+examples/*/tutorial
