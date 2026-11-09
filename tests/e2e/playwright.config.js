@@ -32,6 +32,7 @@ module.exports = {
     viewport: { width: 1280, height: 900 },
     launchOptions: executablePath ? { executablePath } : {},
     trace: "retain-on-failure",
+    actionTimeout: 5000,
   },
   webServer: [{
     command: `node ${__dirname}/fixtures/mock-oidc.js`,

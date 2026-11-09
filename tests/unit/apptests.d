@@ -314,13 +314,14 @@ unittest
 	auto at = new AppTest(&themeApp).run();
 	auto m = at.messages("set_theme");
 	assert(m.length == 2);
-	assert(m[0]["preset"].get!string == "ocean" && m[0]["mode"].get!string == "dark");
+	assert(m[0]["scheme"].get!string == "ocean" && m[0]["mode"].get!string == "dark");
 	assert(m[0]["allowSwitch"].get!bool);
-	assert(m[1]["preset"].get!string == "paper" && !m[1]["allowSwitch"].get!bool);
+	assert(m[1]["scheme"].get!string == "paper" && !m[1]["allowSwitch"].get!bool);
 	assert(m[1]["overrides"]["primaryColor"].get!string == "#123456");
-	assert(at.sess.newSessionMessage()["themes"].length == themePresetNames().length);
+	assert(at.sess.newSessionMessage()["themes"].length == colorSchemeNames().length);
+	assert(at.sess.newSessionMessage()["designs"].length == designNames().length);
 	at.click("bad").run();
-	assert(at.exceptions.length == 1 && at.exceptions[0]["message"].get!string.canFind("Unknown theme preset"));
+	assert(at.exceptions.length == 1 && at.exceptions[0]["message"].get!string.canFind("Unknown color scheme"));
 }
 
 // ---------------------------------------------------------------- fragments, dialog, status, new widgets
@@ -515,4 +516,57 @@ unittest
 	assert(full == 1, "different fragments must not escalate to a full rerun");
 	assert(saves == 1, "the click must reach its own fragment");
 	assert(ticks == 2);
+}
+
+// ---------------------------------------------------------------- design styles
+
+unittest
+{
+	auto at = new AppTest((St st) {
+		st.setTheme(scheme: "ocean");
+		st.setTheme(design: "terminal");          // keeps the scheme set above
+		st.setTheme(mode: "dark");
+		if (st.button("bad design"))
+			st.setTheme(design: "no-such-design");
+		if (st.button("page config"))
+			st.setPageConfig(design: "win95", colorScheme: "paper");
+	}).run();
+	auto m = at.messages("set_theme");
+	assert(m.length == 3);
+	assert(m[1]["scheme"].get!string == "ocean" && m[1]["design"].get!string == "terminal");
+	assert(m[2]["scheme"].get!string == "ocean" && m[2]["design"].get!string == "terminal" && m[2]["mode"].get!string == "dark");
+	at.click("bad design").run();
+	assert(at.exceptions.length == 1 && at.exceptions[0]["message"].get!string.canFind("Unknown design style"));
+	at.run(); // the failing run stopped before drawing the next button
+	at.click("page config").run();
+	auto last = at.messages("set_theme")[$ - 1];
+	assert(last["design"].get!string == "win95" && last["scheme"].get!string == "paper" && last["mode"].get!string == "dark");
+}
+
+unittest
+{
+	// int metric values with named arguments are not ambiguous
+	auto at = new AppTest((St st) { st.metric("Users", 1830, "-2%", border: true); st.metric("Ratio", 0.5); }).run();
+	assert(at.elements("metric")[0]["value"].get!string == "1830");
+	assert(at.elements("metric")[1]["value"].get!string == "0.5");
+}
+
+unittest
+{
+	// a lock on the appearance menu holds for the rest of the run, and resets on the next run
+	bool lockIt = true;
+	auto at = new AppTest((St st) {
+		if (lockIt)
+			st.setPageConfig(allowThemeSwitch: false);
+		st.setTheme(design: "terminal");
+		st.setPageConfig(title: "t", colorScheme: "ocean");
+	}).run();
+	auto m = at.messages("set_theme");
+	assert(m.length == 3);
+	foreach (x; m)
+		assert(!x["allowSwitch"].get!bool, x.toString);
+	lockIt = false;
+	at.run();
+	foreach (x; at.messages("set_theme"))
+		assert(x["allowSwitch"].get!bool, x.toString);
 }

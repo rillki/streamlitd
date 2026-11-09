@@ -161,6 +161,13 @@ mixin template Elements()
 			"help", help, "border", border));
 	}
 
+	/// ditto (an exact `int` overload, so int values are not ambiguous between long and double)
+	void metric(string label, int value, string delta = null, string deltaColor = "normal",
+		string help = null, bool border = false)
+	{
+		metric(label, value.to!string, delta, deltaColor, help, border);
+	}
+
 	/// ditto
 	void metric(string label, long value, string delta = null, string deltaColor = "normal",
 		string help = null, bool border = false)

@@ -268,40 +268,62 @@ final class St
 		sess.checkInterrupt();
 	}
 
-	/// Configure the page (`st.set_page_config`). `theme` selects a design style preset
-	/// (see `themePresetNames`); `allowThemeSwitch: false` hides the viewer's style menu.
+	/// Configure the page (`st.set_page_config`). `colorScheme` (alias `theme`) and `design`
+	/// select the color scheme and design style (see `colorSchemeNames`, `designNames`);
+	/// `allowThemeSwitch: false` hides the viewer's appearance menu.
 	void setPageConfig(string title = null, string icon = null, Layout layout = Layout.centered,
-		string initialSidebarState = "auto", string theme = null, bool allowThemeSwitch = true)
+		string initialSidebarState = "auto", string theme = null, bool allowThemeSwitch = true,
+		string colorScheme = null, string design = null)
 	{
 		sess.send(jo("type", "page_config", "title", title, "icon", icon,
 			"layout", layout == Layout.wide ? "wide" : "centered", "sidebarState", initialSidebarState));
-		if (theme !is null || !allowThemeSwitch)
+		if (theme !is null || colorScheme !is null || design !is null || !allowThemeSwitch)
 		{
-			Theme t = sess.defaultTheme;
+			Theme t = currentTheme();
 			if (theme !is null)
-				t.preset = theme;
-			setTheme(t, allowThemeSwitch);
+				t.scheme = theme;
+			if (colorScheme !is null)
+				t.scheme = colorScheme;
+			if (design !is null)
+				t.design = design;
+			// an earlier lock in this run (setTheme(t, allowThemeSwitch: false)) is kept
+			setTheme(t, allowThemeSwitch && sess.appAllowSwitch);
 		}
 	}
 
-	/// Select a design style preset and optionally the mode ("auto", "light", "dark").
-	void setTheme(string preset, string mode = null)
+	/// Change the color scheme, mode ("auto", "light", "dark") and/or design style. Parts left
+	/// `null` keep their current value: `st.setTheme(design: "terminal")` only changes the design.
+	void setTheme(string scheme = null, string mode = null, string design = null)
 	{
-		Theme t = sess.defaultTheme;
-		t.preset = preset;
+		Theme t = currentTheme();
+		if (scheme !is null)
+			t.scheme = scheme;
 		if (mode !is null)
 			t.mode = mode;
-		setTheme(t);
+		if (design !is null)
+			t.design = design;
+		setTheme(t, sess.appAllowSwitch); // keeps a lock set earlier in this run
 	}
 
-	/// Set a full theme: preset + mode + Streamlit-style overrides (`primaryColor`, `font`, ...).
+	/// Set a full theme: color scheme + mode + design style + Streamlit-style overrides
+	/// (`primaryColor`, `font`, ...). `allowThemeSwitch: false` hides the viewer's appearance
+	/// menu; the lock holds for the rest of the run (later partial `setTheme` calls keep it).
 	void setTheme(Theme theme, bool allowThemeSwitch = true)
 	{
 		validateTheme(theme);
 		sess.checkInterrupt();
+		sess.appTheme = theme;
+		sess.appThemeSet = true;
+		sess.appAllowSwitch = allowThemeSwitch;
 		auto m = themeJson(theme, allowThemeSwitch && sess.allowThemeSwitch);
 		m["type"] = "set_theme";
 		sess.send(m);
+	}
+
+	/// The theme last set by the app in this session (or the server default).
+	Theme currentTheme()
+	{
+		return sess.appThemeSet ? sess.appTheme : sess.defaultTheme;
 	}
 
 	/// Show a toast notification (`st.toast`).

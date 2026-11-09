@@ -160,7 +160,7 @@ if (sel.type == Json.Type.object)
 
 - The figure is plain Plotly JSON. In Python, `fig.to_json()` produces it, so existing figures
   can be ported by building the same JSON in D or by loading it from a file.
-- `theme: "streamlit"` (the default) applies the active design style: fonts, colors and
+- `theme: "streamlit"` (the default) applies the active design style and color scheme: fonts, colors and
   transparent background. Pass `theme: null` for Plotly's default look.
 - `onSelect: "rerun"` makes the chart a widget. Clicking or lasso-selecting reruns the app, and the
   call returns `{"points": [{curveNumber, pointIndex, x, y}, ...]}`.

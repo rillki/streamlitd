@@ -1,5 +1,5 @@
 const { test } = require("@playwright/test");
-const { open, rerun, widget, expect } = require("./helpers");
+const { open, rerun, widget, expect, pick, pickMany, setDate, setTime } = require("./helpers");
 
 const leftText = (page) => page.locator("pre.st-text").filter({ hasText: "name=" });
 const rightText = (page) => page.locator("pre.st-text").filter({ hasText: "agree=" });
@@ -32,11 +32,12 @@ test("choice widgets", async ({ page }) => {
   await rerun(page, () => page.getByLabel("I agree").check());
   await rerun(page, () => page.getByText("Dark mode").click());
   await rerun(page, () => page.getByLabel("Blue").check());
-  await rerun(page, () => page.getByLabel("City").selectOption({ label: "Shymkent" }));
-  await rerun(page, () => widget(page, "multiselect", "Languages").locator("select").selectOption({ label: "Rust" }));
+  await rerun(page, () => pick(page, "City", "Shymkent"));
+  await rerun(page, async () => { await page.getByRole("combobox", { name: "Languages" }).click(); await page.locator("#stPopups .st-option", { hasText: "Rust" }).click(); });
+  await page.getByRole("combobox", { name: "Languages" }).press("Escape");
   await rerun(page, () => page.getByRole("button", { name: "Remove D" }).click());
-  await rerun(page, () => page.getByLabel("Day").fill("2025-01-31"));
-  await rerun(page, () => page.getByLabel("Time").fill("14:15"));
+  await rerun(page, () => setDate(page, "Day", "2025-01-31"));
+  await rerun(page, () => setTime(page, "Time", "14:15"));
   await expect(rightText(page)).toHaveText("agree=true dark=true color=Blue city=Shymkent langs=Rust day=2025-01-31 time=14:15 pick=#ff4b4b");
 });
 
@@ -78,13 +79,13 @@ test("form submits values only on submit and clears", async ({ page }) => {
   const runs = await page.evaluate(() => +document.body.dataset.runs);
   await page.getByLabel("Email").fill("ann@example.com");
   await page.getByLabel("Email").blur();
-  await page.getByLabel("Plan").selectOption({ label: "Pro" });
+  await pick(page, "Plan", "Pro");
   await page.waitForTimeout(300);
   expect(await page.evaluate(() => +document.body.dataset.runs)).toBe(runs); // no rerun yet
   await rerun(page, () => page.getByRole("button", { name: "Sign up" }).click());
   await expect(page.getByText("Signed up ann@example.com for Pro with 5 seats")).toBeVisible();
   await expect(page.getByLabel("Email")).toHaveValue("");
-  await expect(page.getByLabel("Plan")).toHaveValue("0");
+  await expect(page.getByLabel("Plan")).toHaveValue("Free");
 });
 
 test("pending form values survive unrelated reruns", async ({ page }) => {

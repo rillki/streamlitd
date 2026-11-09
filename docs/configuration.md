@@ -28,7 +28,9 @@ headless = false             # true = no startup banner (--quiet)
 allowedOrigins = []          # --allowed-origin: extra Origins allowed to open the WebSocket / upload ("*" = any)
 
 [theme]
-preset = "streamlit"         # --theme: streamlit, minimal, ocean, forest, sunset, finance, solarized, paper
+design = "streamlit"         # --design: streamlit, terminal, retro, win95, xp, brutalist, material, glass
+scheme = "streamlit"         # --color-scheme (alias --theme): streamlit, minimal, ocean, forest, sunset, finance, solarized, paper
+                             #   (`preset` is accepted as an old name for `scheme`)
 mode = "auto"                # --theme-mode: auto | light | dark   (Streamlit's `base` is accepted too)
 allowSwitch = true           # false = hide the viewer style menu (--no-theme-switch)
 # any theme token, see theming.md: primaryColor, backgroundColor, font, baseRadius, chartColors, ...
@@ -60,7 +62,7 @@ warning at startup. An existing `.streamlit/config.toml` can stay as it is.
 | `STREAMLITD_SERVER_MAXSESSIONS` | `[server] maxSessions` |
 | `STREAMLITD_SERVER_IDLETIMEOUT` | `[server] idleTimeout` |
 | `STREAMLITD_SERVER_HEADLESS` | `[server] headless` |
-| `STREAMLITD_THEME_PRESET`, `_MODE`, `_BASE` | `[theme] preset`, `mode`, `base` |
+| `STREAMLITD_THEME_DESIGN`, `_SCHEME` (or `_PRESET`), `_MODE`, `_BASE` | `[theme] design`, `scheme`, `mode`, `base` |
 | `STREAMLITD_THEME_PRIMARYCOLOR`, `_BACKGROUNDCOLOR`, `_SECONDARYBACKGROUNDCOLOR`, `_TEXTCOLOR`, `_FONT`, `_HEADINGFONT`, `_CODEFONT`, `_BASERADIUS` | the theme tokens |
 
 ## Command-line flags
@@ -80,7 +82,8 @@ warning at startup. An existing `.streamlit/config.toml` can stay as it is.
 | `--idle-timeout` | 0 | close idle sessions after N seconds |
 | `--max-upload-mb` | 200 | upload size limit |
 | `--script-threads` | -1 | worker threads for app scripts |
-| `--theme`, `--theme-mode` | `streamlit`, `auto` | design style and mode |
+| `--design` | `streamlit` | design style |
+| `--color-scheme` (alias `--theme`), `--theme-mode` | `streamlit`, `auto` | color scheme and mode |
 | `--theme.<key>=<value>` | | any theme token, e.g. `--theme.primaryColor=#123456` |
 | `--no-theme-switch` | | hide the viewer style menu |
 | `--auth-required` | | require login for the whole app |
@@ -132,7 +135,8 @@ int main()
 {
     ServerOptions o;
     o.port = 9000;
-    o.theme.preset = "ocean";
+    o.theme.scheme = "ocean";
+    o.theme.design = "material";
     o.scriptThreads = 4;
     return serve(toDelegate(&app), o);
 }

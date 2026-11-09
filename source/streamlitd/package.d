@@ -28,7 +28,8 @@ public import streamlitd.server : serve, runMain, ServerOptions;
 public import streamlitd.secrets : Secrets, secrets;
 public import streamlitd.components : Component, declareComponent;
 public import streamlitd.fragments : StatusContainer;
-public import streamlitd.theme : Theme, ThemeTokens, themePresetNames, fontSans, fontSerif, fontMono, fontRounded;
+public import streamlitd.theme : Theme, ThemeTokens, DesignStyle, colorSchemeNames, designNames, themePresetNames,
+	fontSans, fontSerif, fontMono, fontRounded;
 public import streamlitd.testing : AppTest;
 public import vibe.data.json : Json, parseJsonString;
 public import std.datetime : Date, TimeOfDay;

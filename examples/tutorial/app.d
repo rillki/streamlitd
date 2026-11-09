@@ -13,10 +13,11 @@ DataFrame loadSales(string path)
 
 void app(St st)
 {
-	// --- Step 8: page config and design style -----------------------------------------
+	// --- Step 8: page config, design style and color scheme--------------------------------------
 	st.setPageConfig(title: "Sales dashboard", icon: "📈", layout: Layout.wide);
-	auto style = st.sidebar.selectbox("Design style", themePresetNames(), key: "style");
-	st.setTheme(style);
+	auto design = st.sidebar.selectbox("Design style", designNames(), key: "design");
+	auto scheme = st.sidebar.selectbox("Color scheme", colorSchemeNames(), key: "scheme");
+	st.setTheme(scheme: scheme, design: design);
 
 	// --- Step 1: text ------------------------------------------------------------------
 	st.title("📈 Sales dashboard");

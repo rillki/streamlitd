@@ -6,6 +6,7 @@
 <title>streamlitd</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="static/style.css">
+<link rel="stylesheet" href="static/designs.css">
 <script src="static/vendor/marked.min.js"></script>
 </head>
 <body>
@@ -23,8 +24,11 @@
         <div class="seg" id="stModeSeg" role="radiogroup" aria-label="Mode">
           <button type="button" data-mode="auto">System</button><button type="button" data-mode="light">Light</button><button type="button" data-mode="dark">Dark</button>
         </div>
-        <label for="stStyleSelect">Design style</label>
-        <select id="stStyleSelect" class="st-select" data-testid="st-style-select"></select>
+        <label for="stDesignSelect">Design style</label>
+        <div id="stDesignMount"></div>
+        <div class="design-cards" id="stDesignCards"></div>
+        <label for="stStyleSelect">Color scheme</label>
+        <div id="stSchemeMount"></div>
         <div class="style-swatches" id="stSwatches"></div>
       </div>
     </div>
@@ -45,6 +49,7 @@
 <div id="stRoot-3" class="dialog-root"></div>
 <div id="stToasts" data-testid="st-toasts"></div>
 <div id="stConnection" hidden><div class="conn-box"><div class="spinner-icon"></div><span>Connecting&hellip;</span></div></div>
+<script src="static/ui.js"></script>
 <script src="static/app.js"></script>
 </body>
 </html>

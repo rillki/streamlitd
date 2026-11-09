@@ -89,6 +89,41 @@ Useful hooks in the page:
   `st-chat-input`, `st-dialog`, …). Widget wrappers also have `data-label`.
 - Charts and maps set `data-rendered="1"` when drawn.
 
+### Helpers for streamlitd's controls
+
+streamlitd uses its own themed controls instead of native `<select>` / date / time / color inputs, so
+Playwright's `selectOption` does not apply. `tests/e2e/specs/helpers.js` provides helpers that drive them by role:
+
+```js
+const { pick, pickMany, setDate, setTime, setColor } = require("./helpers");
+await pick(page, "City", "Shymkent");                 // selectbox: open, click the option
+await pickMany(page, "Languages", ["Rust", "Go"]);    // multiselect: toggle options, close
+await setDate(page, "Day", "2025-01-31");             // type + Enter (the calendar is optional)
+await setTime(page, "Time", "14:15");
+await setColor(page, "Color", "#123456");             // hex field in the color pop-up
+```
+
+Comboboxes are `getByRole("combobox", { name })`, their options `#stPopups [role=option]`.
+
+### UI audit
+
+`tests/e2e/specs/ui-audit.spec.js` opens the design gallery in every design style × light/dark (plus three
+other color schemes, a 390 px phone viewport and the other example apps). In each state it checks:
+
+- the settings panel, every pop-up type, and the dialog;
+- elements clipped by an `overflow` ancestor;
+- text overflowing buttons, chips, tabs, cards and options;
+- values cut off inside inputs;
+- horizontal page scroll;
+- pop-ups, panels and dialogs leaving the viewport;
+- header buttons or pop-ups covered by other layers;
+- WCAG text contrast;
+- that every interaction (clicks that open pop-ups) still works.
+
+Findings fail the test and are written to `test-results/ui-audit-*.md` / `.json`, with screenshots of the
+failing states in `test-results/ui-audit/`. The checker (`specs/audit.js`) can be used from any spec:
+`const findings = await audit(page, "state name");`.
+
 Run everything (unit, e2e and doc snippets) with:
 
 ```sh

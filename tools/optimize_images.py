@@ -4,17 +4,19 @@ import glob, os
 from PIL import Image
 
 root = os.path.join(os.path.dirname(__file__), "..", "docs", "images")
-presets = ["streamlit", "minimal", "ocean", "forest", "sunset", "finance", "solarized", "paper"]
+designs = ["streamlit", "terminal", "retro", "win95", "xp", "brutalist", "material", "glass"]
+schemes = ["streamlit", "minimal", "ocean", "forest", "sunset", "finance", "solarized", "paper"]
 
-# contact sheets: 4 columns x 2 rows of presets, light and dark
-for mode in ("light", "dark"):
-    files = [os.path.join(root, f"theme-{p}-{mode}.png") for p in presets]
-    if all(os.path.exists(f) for f in files):
-        w, h = 480, 300
-        sheet = Image.new("RGB", (w * 4, h * 2), "white")
-        for i, f in enumerate(files):
-            sheet.paste(Image.open(f).convert("RGB").resize((w, h), Image.LANCZOS), ((i % 4) * w, (i // 4) * h))
-        sheet.save(os.path.join(root, f"themes-{mode}.png"))
+# contact sheets: 4 columns x 2 rows, light and dark, for design styles and color schemes
+for prefix, names in (("design", designs), ("scheme", schemes)):
+    for mode in ("light", "dark"):
+        files = [os.path.join(root, f"{prefix}-{n}-{mode}.png") for n in names]
+        if all(os.path.exists(f) for f in files):
+            w, h = 480, 300
+            sheet = Image.new("RGB", (w * 4, h * 2), "white")
+            for i, f in enumerate(files):
+                sheet.paste(Image.open(f).convert("RGB").resize((w, h), Image.LANCZOS), ((i % 4) * w, (i // 4) * h))
+            sheet.save(os.path.join(root, f"{prefix}s-{mode}.png"))
 
 before = after = 0
 for f in sorted(glob.glob(os.path.join(root, "*.png"))):

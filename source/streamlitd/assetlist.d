@@ -4,8 +4,10 @@ module streamlitd.assetlist;
 /// Embedded asset paths (relative to assets/).
 enum assetNames = [
 	"app.js",
+	"designs.css",
 	"index.html",
 	"style.css",
+	"ui.js",
 	"vendor/hljs/d.min.js",
 	"vendor/hljs/highlight.min.js",
 	"vendor/katex/fonts/KaTeX_AMS-Regular.woff2",

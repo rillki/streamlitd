@@ -12,7 +12,7 @@ Python keyword arguments: `st.slider("x", 0, 10, 5, step: 2, key: "s")`. Python'
 | script body | `void app(St st) { ... }` plus `mixin StreamlitMain!app;` |
 | `streamlit run app.py` | `dub run --compiler=ldc2` (or `./app`) |
 | `streamlit run app.py --server.port 8080` | `./app --port 8080` |
-| `st.set_page_config(page_title=, page_icon=, layout="wide", initial_sidebar_state=)` | `st.setPageConfig(title:, icon:, layout: Layout.wide, initialSidebarState:)` |
+| `st.set_page_config(page_title=, page_icon=, layout="wide", initial_sidebar_state=)` | `st.setPageConfig(title:, icon:, layout: Layout.wide, initialSidebarState:, design:, colorScheme:)` |
 
 ## Text
 
@@ -165,7 +165,8 @@ and `labelVisibility: "visible" | "hidden" | "collapsed"`.
 | Python | D |
 |---|---|
 | `.streamlit/config.toml` | `.streamlitd/config.toml` (`.streamlit/config.toml` is read too) |
-| `[theme] base="dark" primaryColor=...` | same keys, plus `preset = "ocean"` (see [Theming](theming.md)) |
+| `[theme] base="dark" primaryColor=...` | same keys, plus `scheme = "ocean"` and `design = "terminal"` (see [Theming](theming.md)) |
+| (no equivalent) | `st.setTheme(design: "win95", scheme: "paper", mode: "dark")`: [8 design styles × 8 color schemes](theming.md) |
 | `--theme.primaryColor=#f00` | `--theme.primaryColor=#f00` |
 | `--server.baseUrlPath=/x` | `--base-url-path /x` |
 

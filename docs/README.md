@@ -16,7 +16,7 @@ every interaction. You get a single self-contained binary that serves the web UI
 |---|---|
 | [Layout & navigation](layout-and-navigation.md) | sidebar, columns, tabs, expanders, forms, dialogs, status, multipage apps, query params |
 | [Data & charts](data-and-charts.md) | `DataFrame`, tables, data editor, line/bar/area/scatter charts, Vega-Lite, Plotly, maps |
-| [Theming](theming.md) | the 8 design styles, light/dark mode, custom colors and fonts |
+| [Theming](theming.md) | 8 design styles (terminal, retro, win95, XP, …) × 8 color schemes × light/dark, custom colors and fonts |
 | [Configuration](configuration.md) | `config.toml`, environment variables, command-line flags, `secrets.toml` |
 | [Deployment](deployment.md) | release builds, systemd, Docker and docker-compose, reverse proxies, scaling |
 | [Authentication](authentication.md) | password users, OIDC single sign-on (Google, Entra ID, Keycloak…), `st.user` |
@@ -43,7 +43,7 @@ The [`examples/`](../examples) folder contains runnable apps. Each one is used b
 | `widgets` | every input widget, layout containers, forms, status elements |
 | `data` | DataFrame, dataframe/table/data editor, all chart types, upload/download, images |
 | `multipage` | `st.navigation`, chat UI, query params |
-| `themes` | design styles and the viewer style menu |
+| `themes` | design gallery: design styles, color schemes, modes and the viewer appearance menu |
 | `fragments` | `st.fragment`, auto-refresh, `st.dialog`, `st.status`, pills/segmented/feedback |
 | `extras` | LaTeX, code highlighting, Plotly, maps, custom components |
 | `prod` | `config.toml`, secrets, base URL path, worker threads |

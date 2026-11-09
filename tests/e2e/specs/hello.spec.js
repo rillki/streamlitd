@@ -1,5 +1,5 @@
 const { test } = require("@playwright/test");
-const { open, rerun, expect } = require("./helpers");
+const { open, rerun, expect, pick } = require("./helpers");
 
 test("renders title, markdown and sidebar", async ({ page }) => {
   await open(page, "hello");
@@ -40,7 +40,7 @@ test("session state survives reruns and is per session", async ({ browser }) => 
 
 test("sidebar selectbox", async ({ page }) => {
   await open(page, "hello");
-  await rerun(page, () => page.getByLabel("Mood").selectOption({ label: "😢 sad" }));
+  await rerun(page, () => pick(page, "Mood", "😢 sad"));
   await expect(page.getByTestId("st-sidebar")).toContainText("You feel 😢 sad");
   await page.getByRole("button", { name: "Close sidebar" }).click();
   await expect(page.locator("#stApp")).toHaveClass(/sidebar-collapsed/);

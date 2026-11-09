@@ -23,7 +23,7 @@ You'll learn:
 | 5 | `tabs`, charts, `dataframe`, `downloadButton` |
 | 6 | `form`, `st.session`, `st.rerun` |
 | 7 | `st.fragment` with `runEvery` |
-| 8 | page config and design styles |
+| 8 | page config, design styles and color schemes |
 
 ## Setup
 
@@ -194,20 +194,22 @@ block every 2 seconds without touching the rest of the page. Widgets inside a fr
 rerun only the fragment. That is useful for expensive pages where a small control must stay
 fast.
 
-## Step 8: page config and design style
+## Step 8: page config, design style and color scheme
 
 <!-- no-compile -->
 ```d
     st.setPageConfig(title: "Sales dashboard", icon: "📈", layout: Layout.wide);
-    auto style = st.sidebar.selectbox("Design style", themePresetNames(), key: "style");
-    st.setTheme(style);
+    auto design = st.sidebar.selectbox("Design style", designNames(), key: "design");
+    auto scheme = st.sidebar.selectbox("Color scheme", colorSchemeNames(), key: "scheme");
+    st.setTheme(scheme: scheme, design: design);
 ```
 
 `setPageConfig` sets the browser tab title, the favicon and the wide layout. `setTheme`
-switches between the [8 built-in design styles](theming.md). Viewers can also pick a style
-and light/dark mode from the ⚙ menu in the top-right corner.
+picks one of the [8 design styles](theming.md) (the UI's shape: terminal, retro, win95, XP,
+brutalist, material, glass, or the default) and one of the 8 color schemes, independently.
+Viewers can also choose design, scheme and light/dark mode from the ⚙ menu in the top-right corner.
 
-![finance style, dark mode](images/tutorial-dark.png)
+![XP design with the finance color scheme, dark mode](images/tutorial-dark.png)
 
 ## The complete program
 
@@ -228,10 +230,11 @@ DataFrame loadSales(string path)
 
 void app(St st)
 {
-	// --- Step 8: page config and design style -----------------------------------------
+	// --- Step 8: page config, design style and color scheme--------------------------------------
 	st.setPageConfig(title: "Sales dashboard", icon: "📈", layout: Layout.wide);
-	auto style = st.sidebar.selectbox("Design style", themePresetNames(), key: "style");
-	st.setTheme(style);
+	auto design = st.sidebar.selectbox("Design style", designNames(), key: "design");
+	auto scheme = st.sidebar.selectbox("Color scheme", colorSchemeNames(), key: "scheme");
+	st.setTheme(scheme: scheme, design: design);
 
 	// --- Step 1: text ------------------------------------------------------------------
 	st.title("📈 Sales dashboard");

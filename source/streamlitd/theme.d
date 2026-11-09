@@ -1,8 +1,10 @@
-/// Theme presets ("design styles") and custom theme overrides.
+/// Theming: **design styles** (the shape of the UI: fonts, borders, shadows, chrome),
+/// **color schemes** (palettes) and **mode** (light/dark), plus Streamlit-style token overrides.
 ///
 /// Streamlit itself only ships Light/Dark plus `[theme]` overrides in `config.toml`.
 /// streamlitd keeps that model (field names follow Streamlit's config keys) and adds
-/// named presets, each with a light and a dark variant.
+/// named color schemes (each with a light and a dark variant) and design styles that
+/// work with every scheme in both modes.
 module streamlitd.theme;
 
 import std.algorithm : canFind, map;
@@ -93,15 +95,107 @@ struct ThemeTokens
 	}
 }
 
-/// The theme an app asks for: a preset, a mode and optional overrides.
+/// The theme an app asks for: a color scheme, a mode, a design style and optional overrides.
 struct Theme
 {
-	string preset = "streamlit";
-	string mode = "auto";     /// "auto" (follow the OS), "light" or "dark"
+	string scheme = "streamlit"; /// color scheme (see `colorSchemeNames`)
+	string mode = "auto";        /// "auto" (follow the OS), "light" or "dark"
+	string design = "streamlit"; /// design style (see `designNames`)
 	ThemeTokens overrides;
+
+	/// Deprecated alias of `scheme` (the color schemes used to be called presets).
+	@property string preset() const { return scheme; }
+	/// ditto
+	@property void preset(string v) { scheme = v; }
 }
 
-/// A named design style.
+/// A design style: how the UI is shaped. Colors always come from the color scheme.
+struct DesignStyle
+{
+	string name;
+	string label;
+	string description;
+	/// Tokens the design forces (null = keep the scheme's): fonts and corner radius.
+	string font, headingFont, codeFont, baseRadius;
+	/// Chart tweaks for Vega-Lite/Plotly: line stroke width, bar corner radius, grid dash pattern.
+	double strokeWidth = 2;
+	double barRadius = 0;
+	double[] gridDash;
+}
+
+enum fontTerminal = `"JetBrains Mono", "Cascadia Mono", "Fira Code", "Source Code Pro", Menlo, Consolas, "Liberation Mono", monospace`;
+enum fontRetro = `"Press Start 2P", "VT323", "Courier New", Courier, "Liberation Mono", monospace`;
+enum fontWin95 = `Tahoma, "MS Sans Serif", "Microsoft Sans Serif", Geneva, Verdana, "DejaVu Sans", sans-serif`;
+enum fontXp = `Tahoma, "Segoe UI", Verdana, "DejaVu Sans", sans-serif`;
+enum fontMaterial = `Roboto, "Segoe UI", "Helvetica Neue", Arial, system-ui, sans-serif`;
+
+/// All design styles, in menu order. The first one is the default.
+DesignStyle[] designStyles()
+{
+	static DesignStyle[] cache;
+	if (cache.length)
+		return cache;
+	DesignStyle d(string name, string label, string description, string font = null, string radius = null,
+		double stroke = 2, double barRadius = 0, double[] dash = null, string heading = null, string code = null)
+	{
+		DesignStyle s;
+		s.name = name;
+		s.label = label;
+		s.description = description;
+		s.font = font;
+		s.headingFont = heading !is null ? heading : font;
+		s.codeFont = code !is null ? code : (font is null ? null : fontMono);
+		s.baseRadius = radius;
+		s.strokeWidth = stroke;
+		s.barRadius = barRadius;
+		s.gridDash = dash;
+		return s;
+	}
+	cache = [
+		d("streamlit", "Streamlit", "The default Streamlit look"),
+		d("terminal", "Terminal", "Monospace text, [ bracket ] buttons, dashed borders, phosphor glow in dark mode",
+			fontTerminal, "0", 1.5, 0, [2.0, 3.0], fontTerminal, fontTerminal),
+		d("retro", "Retro", "8-bit look: chunky borders, hard offset shadows, uppercase pixel type",
+			fontRetro, "0", 3, 0, null, fontRetro, fontRetro),
+		d("win95", "Classic (Win95)", "Gray 3D bevels, title bars and sunken inputs", fontWin95, "0", 1.5, 0),
+		d("xp", "XP (Luna)", "Glossy rounded title bars, gradient buttons, task-pane sidebar", fontXp, "3px", 2, 2),
+		d("brutalist", "Brutalist", "Thick borders, hard shadows, bold uppercase headings", null, "0", 3, 0),
+		d("material", "Material", "Pill buttons, filled inputs, elevated cards", fontMaterial, "12px", 2.5, 4),
+		d("glass", "Glass", "Translucent blurred panels over a soft gradient backdrop", null, "16px", 2.5, 6),
+	];
+	return cache;
+}
+
+/// Names of all design styles.
+string[] designNames() { return designStyles().map!(d => d.name).array; }
+
+/// Look up a design style; returns null if unknown.
+const(DesignStyle)* findDesign(string name)
+{
+	foreach (ref d; designStyles())
+		if (d.name == name)
+			return &d;
+	return null;
+}
+
+/// All design styles as JSON (sent to the browser once per session).
+Json designsJson()
+{
+	auto a = Json.emptyArray;
+	foreach (d; designStyles())
+	{
+		auto forced = Json.emptyObject;
+		if (d.font !is null) forced["font"] = d.font;
+		if (d.headingFont !is null) forced["headingFont"] = d.headingFont;
+		if (d.codeFont !is null) forced["codeFont"] = d.codeFont;
+		if (d.baseRadius !is null) forced["baseRadius"] = d.baseRadius;
+		a ~= jo("name", d.name, "label", d.label, "description", d.description, "tokens", forced,
+			"chart", jo("strokeWidth", d.strokeWidth, "barRadius", d.barRadius, "gridDash", d.gridDash));
+	}
+	return a;
+}
+
+/// A named color scheme (palette), with light and dark variants.
 struct ThemePreset
 {
 	string name;
@@ -204,8 +298,11 @@ ThemePreset[] themePresets()
 	return cache;
 }
 
-/// Names of all presets.
-string[] themePresetNames() { return themePresets().map!(p => p.name).array; }
+/// Names of all color schemes.
+string[] colorSchemeNames() { return themePresets().map!(p => p.name).array; }
+
+/// Deprecated alias of `colorSchemeNames`.
+string[] themePresetNames() { return colorSchemeNames(); }
 
 /// Look up a preset; returns null if unknown.
 const(ThemePreset)* findPreset(string name)
@@ -220,9 +317,12 @@ const(ThemePreset)* findPreset(string name)
 void validateTheme(const Theme t)
 {
 	import streamlitd.errors : StreamlitAPIException;
-	if (findPreset(t.preset) is null)
-		throw new StreamlitAPIException(`Unknown theme preset "` ~ t.preset ~ `". Available: ` ~
-			themePresetNames().join(", "));
+	if (findPreset(t.scheme) is null)
+		throw new StreamlitAPIException(`Unknown color scheme "` ~ t.scheme ~ `". Available: ` ~
+			colorSchemeNames().join(", "));
+	if (findDesign(t.design) is null)
+		throw new StreamlitAPIException(`Unknown design style "` ~ t.design ~ `". Available: ` ~
+			designNames().join(", "));
 	if (!["auto", "light", "dark"].canFind(t.mode))
 		throw new StreamlitAPIException(`Theme mode must be "auto", "light" or "dark", not "` ~ t.mode ~ `"`);
 }
@@ -239,7 +339,8 @@ Json presetsJson()
 /// A theme as JSON.
 Json themeJson(const Theme t, bool allowSwitch)
 {
-	return jo("preset", t.preset, "mode", t.mode, "overrides", t.overrides.toJson(), "allowSwitch", allowSwitch);
+	return jo("scheme", t.scheme, "design", t.design, "mode", t.mode, "overrides", t.overrides.toJson(),
+		"allowSwitch", allowSwitch);
 }
 
 unittest
@@ -273,6 +374,16 @@ unittest
 
 	import std.exception : assertThrown;
 	assertThrown(validateTheme(Theme("nope")));
+	assertThrown(validateTheme(Theme("ocean", "dark", "no-such-design")));
+	validateTheme(Theme("ocean", "dark", "terminal"));
+	Theme old;
+	old.preset = "paper"; // deprecated alias
+	assert(old.scheme == "paper" && old.preset == "paper");
+	assert(designStyles().length == 8 && designStyles()[0].name == "streamlit");
+	foreach (dsn; designStyles())
+		assert(dsn.label.length && dsn.description.length, dsn.name);
+	assert(findDesign("terminal").font == fontTerminal && findDesign("streamlit").font is null);
+	assert(designsJson()[1]["tokens"]["baseRadius"].get!string == "0");
 	assertThrown(validateTheme(Theme("ocean", "purple")));
 	validateTheme(Theme("paper", "dark"));
 }

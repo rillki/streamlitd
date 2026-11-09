@@ -479,64 +479,116 @@ unittest
 	assertThrown(parseThemeOverrides(["--theme.nope=1"], t));
 }
 
+/// What `runMain` should do after parsing the command line.
+enum ArgsAction { serve, help, hashPassword }
+
+/// Build the server options from config files, `STREAMLITD_*` environment variables and the
+/// command line (precedence: CLI > env > config file > defaults). Throws on invalid input.
+/// `helpText` is filled when `--help` was given.
+ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction action, out string helpText,
+	bool readConfigFiles = true)
+{
+	import std.getopt;
+	import std.array : appender;
+	ServerOptions o;
+	// --config <file> must be known before the file is read
+	string configPath;
+	foreach (i, a; args)
+	{
+		if (a == "--config" && i + 1 < args.length)
+			configPath = args[i + 1];
+		else if (a.length > 9 && a[0 .. 9] == "--config=")
+			configPath = a[9 .. $];
+	}
+	if (readConfigFiles || configPath.length)
+		foreach (w; applyConfig(o, loadConfigFiles(configPath)))
+			stderr.writeln("streamlitd: config: ", w);
+	applyEnv(o, env);
+
+	args = parseThemeOverrides(args, o.theme.overrides);
+	bool noSwitch, hashPassword;
+	string unusedConfig;
+	auto help = getopt(args, config.passThrough,
+		"config", "Config file (default: .streamlitd/config.toml or .streamlit/config.toml)", &unusedConfig,
+		"port|p", "Port to listen on (default 8501)", &o.port,
+		"host", "Address to bind (default 0.0.0.0)", &o.host,
+		"base-url-path", "Serve under a path prefix, e.g. /myapp", &o.baseUrlPath,
+		"allowed-origin", "Extra allowed Origin for WebSocket/uploads (repeatable, * = any)", &o.allowedOrigins,
+		"max-sessions", "Maximum concurrent sessions (0 = unlimited)", &o.maxSessions,
+		"idle-timeout", "Close sessions idle for N seconds (0 = never)", &o.idleTimeoutSeconds,
+		"max-upload-mb", "Maximum upload size in MB (default 200)", &o.maxUploadMB,
+		"script-threads", "Worker threads for app scripts (-1 = CPU cores, 0 = single-threaded)", &o.scriptThreads,
+		"color-scheme", "Color scheme: " ~ colorSchemeNames().join(", "), &o.theme.scheme,
+		"theme", "Old name of --color-scheme", &o.theme.scheme,
+		"design", "Design style: " ~ designNames().join(", "), &o.theme.design,
+		"theme-mode", "auto | light | dark", &o.theme.mode,
+		"no-theme-switch", "Hide the viewer's appearance menu", &noSwitch,
+		"hash-password", "Read a password from stdin and print its hash for secrets.toml", &hashPassword,
+		"auth-required", "Require login for the whole app ([auth] must be configured)", &o.authRequired,
+		"quiet|q", "Do not print the startup banner", &o.quiet);
+	if (help.helpWanted)
+	{
+		auto text = appender!string;
+		defaultGetoptFormatter(text, "streamlitd app (theme overrides: --theme.<key>=<value>, e.g. --theme.primaryColor=#123456)",
+			help.options);
+		helpText = text.data;
+		action = ArgsAction.help;
+		return o;
+	}
+	action = hashPassword ? ArgsAction.hashPassword : ArgsAction.serve;
+	if (noSwitch)
+		o.allowThemeSwitch = false;
+	validateTheme(o.theme);
+	return o;
+}
+
+unittest
+{
+	import std.exception : assertThrown;
+	import std.algorithm : canFind;
+	ArgsAction act;
+	string helpText;
+	auto o = parseServerArgs(["app", "--design", "xp", "--color-scheme", "ocean", "--theme-mode", "dark", "-p", "9001"],
+		null, act, helpText, false);
+	assert(act == ArgsAction.serve && o.theme.design == "xp" && o.theme.scheme == "ocean" && o.theme.mode == "dark" && o.port == 9001);
+	o = parseServerArgs(["app", "--theme", "paper", "--no-theme-switch"], null, act, helpText, false); // old alias
+	assert(o.theme.scheme == "paper" && !o.allowThemeSwitch);
+	o = parseServerArgs(["app"], ["STREAMLITD_THEME_DESIGN": "retro"], act, helpText, false);
+	assert(o.theme.design == "retro");
+	o = parseServerArgs(["app", "--design", "glass"], ["STREAMLITD_THEME_DESIGN": "retro"], act, helpText, false); // CLI > env
+	assert(o.theme.design == "glass");
+	assertThrown(parseServerArgs(["app", "--design", "nope"], null, act, helpText, false));
+	assertThrown(parseServerArgs(["app", "--color-scheme", "nope"], null, act, helpText, false));
+	parseServerArgs(["app", "--help"], null, act, helpText, false);
+	assert(act == ArgsAction.help && helpText.canFind("--design") && helpText.canFind("terminal"));
+}
+
 /// Parse configuration (config.toml, `STREAMLITD_*` env vars, command line) and serve.
 /// Precedence: CLI > env > config file > defaults.
 int runMain(AppFn app, string[] args)
 {
-	import std.getopt;
 	import std.process : environment;
 	ServerOptions o;
 	try
 	{
-		// --config <file> must be known before the file is read
-		string configPath;
-		foreach (i, a; args)
+		ArgsAction action;
+		string helpText;
+		o = parseServerArgs(args, environment.toAA(), action, helpText);
+		final switch (action)
 		{
-			if (a == "--config" && i + 1 < args.length)
-				configPath = args[i + 1];
-			else if (a.length > 9 && a[0 .. 9] == "--config=")
-				configPath = a[9 .. $];
+			case ArgsAction.help:
+				import std.stdio : write;
+				write(helpText);
+				return 0;
+			case ArgsAction.hashPassword:
+				import std.stdio : readln;
+				import std.string : chomp;
+				import streamlitd.auth : hashPasswordString;
+				writeln(hashPasswordString(readln().chomp));
+				return 0;
+			case ArgsAction.serve:
+				break;
 		}
-		foreach (w; applyConfig(o, loadConfigFiles(configPath)))
-			stderr.writeln("streamlitd: config: ", w);
-		applyEnv(o, environment.toAA());
-
-		args = parseThemeOverrides(args, o.theme.overrides);
-		bool noSwitch, hashPassword;
-		string unusedConfig;
-		auto help = getopt(args, config.passThrough,
-			"config", "Config file (default: .streamlitd/config.toml or .streamlit/config.toml)", &unusedConfig,
-			"port|p", "Port to listen on (default 8501)", &o.port,
-			"host", "Address to bind (default 0.0.0.0)", &o.host,
-			"base-url-path", "Serve under a path prefix, e.g. /myapp", &o.baseUrlPath,
-			"allowed-origin", "Extra allowed Origin for WebSocket/uploads (repeatable, * = any)", &o.allowedOrigins,
-			"max-sessions", "Maximum concurrent sessions (0 = unlimited)", &o.maxSessions,
-			"idle-timeout", "Close sessions idle for N seconds (0 = never)", &o.idleTimeoutSeconds,
-			"max-upload-mb", "Maximum upload size in MB (default 200)", &o.maxUploadMB,
-			"script-threads", "Worker threads for app scripts (-1 = CPU cores, 0 = single-threaded)", &o.scriptThreads,
-			"theme", "Design style preset: " ~ themePresetNames().join(", "), &o.theme.preset,
-			"theme-mode", "auto | light | dark", &o.theme.mode,
-			"no-theme-switch", "Hide the viewer's style menu", &noSwitch,
-			"hash-password", "Read a password from stdin and print its hash for secrets.toml", &hashPassword,
-			"auth-required", "Require login for the whole app ([auth] must be configured)", &o.authRequired,
-			"quiet|q", "Do not print the startup banner", &o.quiet);
-		if (help.helpWanted)
-		{
-			defaultGetoptPrinter("streamlitd app (theme overrides: --theme.<key>=<value>, e.g. --theme.primaryColor=#123456)",
-				help.options);
-			return 0;
-		}
-		if (hashPassword)
-		{
-			import std.stdio : readln;
-			import std.string : chomp;
-			import streamlitd.auth : hashPasswordString;
-			writeln(hashPasswordString(readln().chomp));
-			return 0;
-		}
-		if (noSwitch)
-			o.allowThemeSwitch = false;
-		validateTheme(o.theme);
 	}
 	catch (Exception e)
 	{

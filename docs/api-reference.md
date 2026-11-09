@@ -139,6 +139,11 @@ void metric(string label, string value, string delta = null, string deltaColor =
 `st.metric`. `delta` starting with "-" is shown as a decrease.
 
 ```d
+void metric(string label, int value, string delta = null, string deltaColor = "normal", string help = null, bool border = false)
+```
+ditto (an exact `int` overload, so int values are not ambiguous between long and double)
+
+```d
 void metric(string label, long value, string delta = null, string deltaColor = "normal", string help = null, bool border = false)
 ```
 ditto
@@ -748,19 +753,24 @@ void sleep(double seconds)
 Sleep without blocking other sessions (yields to the event loop).
 
 ```d
-void setPageConfig(string title = null, string icon = null, Layout layout = Layout.centered, string initialSidebarState = "auto", string theme = null, bool allowThemeSwitch = true)
+void setPageConfig(string title = null, string icon = null, Layout layout = Layout.centered, string initialSidebarState = "auto", string theme = null, bool allowThemeSwitch = true, string colorScheme = null, string design = null)
 ```
-Configure the page (`st.set_page_config`). `theme` selects a design style preset (see `themePresetNames`); `allowThemeSwitch: false` hides the viewer's style menu.
+Configure the page (`st.set_page_config`). `colorScheme` (alias `theme`) and `design` select the color scheme and design style (see `colorSchemeNames`, `designNames`); `allowThemeSwitch: false` hides the viewer's appearance menu.
 
 ```d
-void setTheme(string preset, string mode = null)
+void setTheme(string scheme = null, string mode = null, string design = null)
 ```
-Select a design style preset and optionally the mode ("auto", "light", "dark").
+Change the color scheme, mode ("auto", "light", "dark") and/or design style. Parts left `null` keep their current value: `st.setTheme(design: "terminal")` only changes the design.
 
 ```d
 void setTheme(Theme theme, bool allowThemeSwitch = true)
 ```
-Set a full theme: preset + mode + Streamlit-style overrides (`primaryColor`, `font`, ...).
+Set a full theme: color scheme + mode + design style + Streamlit-style overrides (`primaryColor`, `font`, ...). `allowThemeSwitch: false` hides the viewer's appearance menu; the lock holds for the rest of the run (later partial `setTheme` calls keep it).
+
+```d
+Theme currentTheme()
+```
+The theme last set by the app in this session (or the server default).
 
 ```d
 void toast(string body_, string icon = null)
@@ -1251,10 +1261,43 @@ Json toJson() const
 Only the fields that are set.
 
 #### `struct Theme`
-The theme an app asks for: a preset, a mode and optional overrides.
+The theme an app asks for: a color scheme, a mode, a design style and optional overrides.
+
+```d
+@property string preset() const
+```
+Deprecated alias of `scheme` (the color schemes used to be called presets).
+
+```d
+@property void preset(string v)
+```
+ditto
+
+#### `struct DesignStyle`
+A design style: how the UI is shaped. Colors always come from the color scheme.
+
+```d
+DesignStyle[] designStyles()
+```
+All design styles, in menu order. The first one is the default.
+
+```d
+string[] designNames()
+```
+Names of all design styles.
+
+```d
+const(DesignStyle)* findDesign(string name)
+```
+Look up a design style; returns null if unknown.
+
+```d
+Json designsJson()
+```
+All design styles as JSON (sent to the browser once per session).
 
 #### `struct ThemePreset`
-A named design style.
+A named color scheme (palette), with light and dark variants.
 
 ```d
 ThemePreset[] themePresets()
@@ -1262,9 +1305,14 @@ ThemePreset[] themePresets()
 All presets, in menu order. The first one is the default.
 
 ```d
+string[] colorSchemeNames()
+```
+Names of all color schemes.
+
+```d
 string[] themePresetNames()
 ```
-Names of all presets.
+Deprecated alias of `colorSchemeNames`.
 
 ```d
 const(ThemePreset)* findPreset(string name)

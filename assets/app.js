@@ -179,6 +179,7 @@
       case "new_session":
         S.sessionId = msg.sessionId;
         if (msg.themes) T.presets = msg.themes;
+        if (msg.designs) T.designs = msg.designs;
         if (msg.theme) T.server = msg.theme;
         applyTheme();
         break;
@@ -499,7 +500,7 @@
       const inner = h("div", { class: "block-vertical" });
       panel.appendChild(inner);
       btn.addEventListener("click", (ev) => { ev.stopPropagation(); panel.hidden = !panel.hidden; });
-      const close = (ev) => { if (!wrap.contains(ev.target)) panel.hidden = true; };
+      const close = (ev) => { if (!wrap.contains(ev.target) && !StUI.inPopup(ev.target)) panel.hidden = true; };
       document.addEventListener("click", close);
       wrap.append(btn, panel);
       node.wrap.appendChild(wrap);
@@ -838,46 +839,29 @@
       node.update = (e) => inputs.forEach((inp, i) => (inp.checked = e.value === i));
     },
 
+    // themed, searchable select (assets/ui.js) instead of the browser's <select>
     selectbox(node, el) {
       const box = widgetBox(node, el);
       const id = nextId();
       box.appendChild(labelEl(el, id));
-      const sel = h("select", { class: "st-select", id, disabled: el.disabled || null });
-      if (el.value === null || el.value === undefined) sel.appendChild(h("option", { value: "", text: el.placeholder || "Choose an option", disabled: true, selected: true }));
-      (el.options || []).forEach((o, i) => sel.appendChild(h("option", { value: String(i), text: o })));
-      if (el.value !== null && el.value !== undefined) sel.value = String(el.value);
-      sel.addEventListener("change", () => widgetChanged(el, sel.value === "" ? null : +sel.value));
-      box.appendChild(sel);
-      node.update = (e) => { if (document.activeElement !== sel && e.value !== null) sel.value = String(e.value); };
+      const cb = StUI.combobox({
+        id, options: (el.options || []).map((o) => ({ label: o })), value: el.value === undefined ? null : el.value,
+        placeholder: el.placeholder || "Choose an option", disabled: el.disabled, onChange: (i) => widgetChanged(el, i),
+      });
+      box.appendChild(cb.el);
+      node.update = (e) => { if (document.activeElement !== cb.input) cb.setValue(e.value === undefined ? null : e.value); };
     },
 
     multiselect(node, el) {
       const box = widgetBox(node, el);
-      box.appendChild(labelEl(el));
-      const wrap = h("div", { class: "multiselect" });
-      box.appendChild(wrap);
-      let value = (el.value || []).slice();
-      const draw = () => {
-        wrap.innerHTML = "";
-        value.forEach((i) => {
-          const x = h("button", { type: "button", title: "Remove", text: "×", "aria-label": "Remove " + el.options[i] });
-          x.addEventListener("click", () => { value = value.filter((v) => v !== i); draw(); widgetChanged(el, value.slice()); });
-          wrap.appendChild(h("span", { class: "chip" }, h("span", { text: el.options[i] }), x));
-        });
-        const full = el.maxSelections > 0 && value.length >= el.maxSelections;
-        const sel = h("select", { disabled: el.disabled || full || null, "aria-label": el.label });
-        sel.appendChild(h("option", { value: "", text: full ? "Maximum reached" : (el.placeholder || "Choose options"), selected: true }));
-        (el.options || []).forEach((o, i) => { if (!value.includes(i)) sel.appendChild(h("option", { value: String(i), text: o })); });
-        sel.addEventListener("change", () => {
-          if (sel.value === "") return;
-          value.push(+sel.value);
-          draw();
-          widgetChanged(el, value.slice());
-        });
-        wrap.appendChild(sel);
-      };
-      draw();
-      node.update = (e) => { value = (e.value || []).slice(); draw(); };
+      const id = nextId();
+      box.appendChild(labelEl(el, id));
+      const mc = StUI.multiCombobox({
+        id, options: (el.options || []).map((o) => ({ label: o })), value: el.value || [], max: el.maxSelections,
+        placeholder: el.placeholder || "Choose options", disabled: el.disabled, onChange: (v) => widgetChanged(el, v),
+      });
+      box.appendChild(mc.el);
+      node.update = (e) => mc.setValue(e.value || []);
     },
 
     slider(node, el) {
@@ -1052,35 +1036,31 @@
       const box = widgetBox(node, el);
       const id = nextId();
       box.appendChild(labelEl(el, id));
-      const inp = h("input", { class: "st-input", id, type: "date", min: el.min || null, max: el.max || null, disabled: el.disabled || null });
-      inp.value = el.value || "";
-      inp.addEventListener("change", () => { if (inp.value) widgetChanged(el, inp.value); });
-      box.appendChild(inp);
-      node.update = (e) => { if (document.activeElement !== inp) inp.value = e.value || ""; };
+      const dp = StUI.datePicker({ id, value: el.value, min: el.min, max: el.max, disabled: el.disabled, onChange: (v) => widgetChanged(el, v) });
+      box.appendChild(dp.el);
+      node.update = (e) => dp.setValue(e.value);
     },
 
     time_input(node, el) {
       const box = widgetBox(node, el);
       const id = nextId();
       box.appendChild(labelEl(el, id));
-      const inp = h("input", { class: "st-input", id, type: "time", step: el.step || 60, disabled: el.disabled || null });
-      inp.value = el.value || "";
-      inp.addEventListener("change", () => { if (inp.value) widgetChanged(el, inp.value.slice(0, 5)); });
-      box.appendChild(inp);
-      node.update = (e) => { if (document.activeElement !== inp) inp.value = e.value || ""; };
+      const tp = StUI.timePicker({ id, value: el.value, step: el.step, disabled: el.disabled, onChange: (v) => widgetChanged(el, v) });
+      box.appendChild(tp.el);
+      node.update = (e) => tp.setValue(e.value);
     },
 
     color_picker(node, el) {
       const box = widgetBox(node, el);
       const id = nextId();
       box.appendChild(labelEl(el, id));
-      const inp = h("input", { id, type: "color", disabled: el.disabled || null });
-      inp.value = el.value || "#000000";
-      const txt = h("span", { text: inp.value, style: { fontFamily: "var(--mono)", fontSize: ".85rem" } });
-      inp.addEventListener("input", () => (txt.textContent = inp.value));
-      inp.addEventListener("change", () => widgetChanged(el, inp.value));
-      box.appendChild(h("div", { class: "color-wrap" }, inp, txt));
-      node.update = (e) => { inp.value = e.value; txt.textContent = e.value; };
+      const swatches = () => {
+        const v = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+        return ["--primary", "--text", "--bg"].concat(Array.from({ length: 10 }, (_, i) => "--chart-" + (i + 1))).map(v);
+      };
+      const cp = StUI.colorPicker({ id, label: el.label, value: el.value, disabled: el.disabled, swatches, onChange: (v) => widgetChanged(el, v) });
+      box.appendChild(cp.el);
+      node.update = (e) => cp.setValue(e.value);
     },
 
     file_uploader(node, el) {
@@ -1231,7 +1211,15 @@
         loadPlotly().then(() => {
           const fig = JSON.parse(JSON.stringify(e.figure));
           const layout = Object.assign({}, fig.layout || {});
-          if (e.theme === "streamlit") applyPlotlyTheme(layout);
+          if (e.theme === "streamlit") {
+            applyPlotlyTheme(layout);
+            // the design's line weight for line traces that don't set their own
+            const sw = T.design && T.design.chart && T.design.chart.strokeWidth;
+            if (sw) for (const tr of fig.data || []) {
+              const lines = (tr.type === undefined || tr.type === "scatter" || tr.type === "scattergl") && (tr.mode === undefined || String(tr.mode).includes("lines"));
+              if (lines && !(tr.line && tr.line.width !== undefined)) tr.line = Object.assign({}, tr.line, { width: sw });
+            }
+          }
           if (e.height > 0) layout.height = e.height;
           else if (!layout.height) layout.height = 400;
           layout.autosize = true;
@@ -1532,7 +1520,8 @@
   function componentTheme() {
     const v = (n) => cssVarValue(n);
     return { base: isDark() ? "dark" : "light", primaryColor: v("--primary"), backgroundColor: v("--bg"),
-      secondaryBackgroundColor: v("--bg2"), textColor: v("--text"), font: v("--font") };
+      secondaryBackgroundColor: v("--bg2"), textColor: v("--text"), font: v("--font"),
+      design: document.documentElement.dataset.design || "streamlit", colorScheme: document.documentElement.dataset.scheme || "streamlit" };
   }
   function loadCss(href) {
     return new Promise((res) => {
@@ -1593,6 +1582,9 @@
       layout[ax] = Object.assign({ gridcolor: grid, zerolinecolor: grid, linecolor: grid }, layout[ax] || {});
     }
     layout.legend = Object.assign({ orientation: "h", y: -0.15 }, layout.legend || {});
+    const c = (T.design && T.design.chart) || {};
+    if (c.gridDash && c.gridDash.length) for (const ax of ["xaxis", "yaxis"]) if (layout[ax].griddash === undefined) layout[ax].griddash = "dot";
+    if (c.barRadius && layout.barcornerradius === undefined) layout.barcornerradius = c.barRadius;
   }
   function loadVega() {
     if (!S.vegaPromise) {
@@ -1613,22 +1605,27 @@
     const grid = hexA(text, dark ? 0.12 : 0.1);
     const colors = T.chartColors && T.chartColors.length ? T.chartColors
       : ["#0068c9", "#83c9ff", "#ff2b2b", "#ffabab", "#29b09d", "#7defa1", "#ff8700", "#ffd16a", "#6d3fc0", "#d5dae5"];
+    const c = (T.design && T.design.chart) || {};
+    const sw = c.strokeWidth || 2;
     return {
       font: T.font || getComputedStyle(document.body).fontFamily,
       range: { category: colors },
-      axis: { labelColor: text, titleColor: text, gridColor: grid, domainColor: grid, tickColor: grid, labelFontSize: 12, titleFontSize: 12, titleFontWeight: "normal" },
+      axis: { labelColor: text, titleColor: text, gridColor: grid, domainColor: grid, tickColor: grid, labelFontSize: 12, titleFontSize: 12, titleFontWeight: "normal",
+        gridDash: c.gridDash || [] },
       legend: { labelColor: text, titleColor: text, labelFontSize: 12, titleFontSize: 12, orient: "bottom" },
       title: { color: text },
       view: { stroke: null },
       mark: { color: colors[0] },
-      line: { strokeWidth: 2 },
-      bar: { binSpacing: 1 },
+      line: { strokeWidth: sw },
+      area: { line: { strokeWidth: sw } },
+      bar: { binSpacing: 1, cornerRadiusEnd: c.barRadius || 0 },
       arc: { stroke: null },
     };
   }
 
-  // ------------------------------------------------------------------ themes (design styles)
-  const T = { presets: [], server: null, app: null, viewer: null, lastKey: null };
+  // ------------------------------------------------------------------ themes: design × color scheme × mode
+  // T.presets = color schemes (palettes), T.designs = design styles (UI shape).
+  const T = { presets: [], designs: [], server: null, app: null, viewer: null, lastKey: null, design: null };
   try { T.viewer = JSON.parse(localStorage.getItem("streamlitd-appearance") || "null"); } catch (e) {}
   function saveViewer() {
     try {
@@ -1636,6 +1633,33 @@
       else localStorage.removeItem("streamlitd-appearance");
     } catch (e) {}
   }
+  // ---- accessible color derivation (WCAG contrast) ----
+  const hexRgb = (hex) => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return null; const n = parseInt(m[1], 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const rgbHex = (c) => "#" + c.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("");
+  const relLum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+  const contrast = (a, b) => { const l1 = relLum(a), l2 = relLum(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
+  const mixRgb = (a, b, w) => a.map((v, i) => v * w + b[i] * (1 - w)); // w = weight of a
+  /** Move `fg` toward `toward` until it reaches `target` contrast against every background. */
+  function ensureContrast(fgHex, bgHexes, target, towardHex) {
+    const fg = hexRgb(fgHex), bgs = bgHexes.map(hexRgb).filter(Boolean), to = hexRgb(towardHex);
+    if (!fg || !bgs.length || !to) return fgHex;
+    for (let w = 1; w >= 0; w -= 0.04) {
+      const c = mixRgb(fg, to, w);
+      if (bgs.every((b) => contrast(c, b) >= target)) return rgbHex(c);
+    }
+    return towardHex;
+  }
+  /** Lightest mix of `text` into `bg` that still reaches `target` on all backgrounds (muted text). */
+  function mutedColor(textHex, bgHex, bgHexes, target) {
+    const t = hexRgb(textHex), b = hexRgb(bgHex), bgs = bgHexes.map(hexRgb).filter(Boolean);
+    if (!t || !b) return textHex && hexA(textHex, 0.6);
+    for (let w = 0.6; w <= 1.0001; w += 0.04) {
+      const c = mixRgb(t, b, w);
+      if (bgs.every((x) => contrast(c, x) >= target)) return rgbHex(c);
+    }
+    return textHex;
+  }
+
   function hexA(hex, a) {
     const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
     if (!m) return hex;
@@ -1644,43 +1668,69 @@
   }
   const darkMq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
   function resolveMode(mode) { return mode === "auto" ? (darkMq && darkMq.matches ? "dark" : "light") : mode; }
-  function baseTheme() { return T.app || T.server || { preset: "streamlit", mode: "auto", overrides: {}, allowSwitch: true }; }
-  function baseKey(b) { return b.preset + "/" + (b.mode || "auto"); }
+  // messages from older servers used `preset` for the color scheme
+  const schemeOf = (o) => (o && (o.scheme || o.preset)) || "streamlit";
+  function baseTheme() { return T.app || T.server || { scheme: "streamlit", design: "streamlit", mode: "auto", overrides: {}, allowSwitch: true }; }
+  function baseKey(b) { return schemeOf(b) + "/" + (b.design || "streamlit") + "/" + (b.mode || "auto"); }
   // The viewer's choice applies while the app keeps the theme it had when the choice was made;
   // an explicit change by the app (st.setTheme to something else) wins.
   function effectiveTheme() {
     const b = baseTheme();
     const allow = b.allowSwitch !== false;
-    let preset = b.preset || "streamlit", mode = b.mode || "auto";
+    let scheme = schemeOf(b), design = b.design || "streamlit", mode = b.mode || "auto";
     const v = T.viewer;
-    if (allow && v && v.basis === baseKey(b)) { if (v.preset) preset = v.preset; if (v.mode) mode = v.mode; }
-    return { preset, mode, overrides: b.overrides || {}, allow };
+    if (allow && v && v.basis === baseKey(b)) {
+      if (v.scheme || v.preset) scheme = v.scheme || v.preset;
+      if (v.design) design = v.design;
+      if (v.mode) mode = v.mode;
+    }
+    return { scheme, design, mode, overrides: b.overrides || {}, allow };
   }
   function applyTheme() {
     if (!T.presets.length) return;
     const eff = effectiveTheme();
-    const p = T.presets.find((x) => x.name === eff.preset) || T.presets[0];
+    const p = T.presets.find((x) => x.name === eff.scheme) || T.presets[0];
+    const d = T.designs.find((x) => x.name === eff.design) || T.designs[0] || { name: "streamlit", tokens: {}, chart: {} };
     const dark = resolveMode(eff.mode) === "dark";
-    const key = JSON.stringify([p.name, dark, eff.overrides]);
+    const key = JSON.stringify([p.name, d.name, dark, eff.overrides]);
     T.current = eff;
     renderSettings();
     if (key === T.lastKey) return;
     T.lastKey = key;
-    const t = Object.assign({}, dark ? p.dark : p.light, eff.overrides);
+    // precedence: scheme tokens < design-forced tokens (fonts, radius) < explicit overrides
+    const t = Object.assign({}, dark ? p.dark : p.light, d.tokens || {}, eff.overrides);
     const root = document.documentElement;
     const set = (k, v) => { if (v !== undefined && v !== null && v !== "") root.style.setProperty(k, v); else root.style.removeProperty(k); };
     root.dataset.theme = dark ? "dark" : "light";
-    root.dataset.style = p.name;
+    root.dataset.style = p.name;   // color scheme (kept for compatibility)
+    root.dataset.scheme = p.name;
+    root.dataset.design = d.name;
+    // Accessible derivations: --primary stays the brand color for borders/decoration (3:1 is enough);
+    // fills that carry text use --primary-strong, primary-colored text uses --primary-ink, and body /
+    // muted text are adjusted to reach 4.5:1 on every surface they appear on.
+    const base = [t.backgroundColor, t.secondaryBackgroundColor, t.sidebarBackgroundColor, t.widgetBackgroundColor, t.codeBackgroundColor].filter(Boolean);
+    // designs draw tonal surfaces (selected chips, material buttons/cards, hover rows) by tinting
+    // these with the primary color: include such tints so text stays readable on them too
+    const pr = hexRgb(t.primaryColor);
+    const surfaces = base.concat(pr ? base.map((b) => { const c = hexRgb(b); return c ? rgbHex(mixRgb(pr, c, 0.2)) : null; }).filter(Boolean) : []);
+    const ink = dark ? "#ffffff" : "#000000";
+    const text = ensureContrast(t.textColor, surfaces, 4.5, ink);
+    const onPrimary = t.primaryTextColor || "#ffffff";
+    const onRgb = hexRgb(onPrimary);
+    const strong = ensureContrast(t.primaryColor, [onPrimary], 4.5, onRgb && relLum(onRgb) > 0.5 ? "#000000" : "#ffffff");
+    const primaryInk = ensureContrast(t.primaryColor, surfaces, 4.5, ink);
     set("--primary", t.primaryColor);
-    set("--primary-hover", t.primaryColor && "color-mix(in srgb, " + t.primaryColor + " 85%, " + (dark ? "white" : "black") + ")");
-    set("--on-primary", t.primaryTextColor);
+    set("--primary-strong", strong);
+    set("--primary-ink", primaryInk);
+    set("--primary-hover", strong && "color-mix(in srgb, " + strong + " 85%, " + (dark ? "white" : "black") + ")");
+    set("--on-primary", onPrimary);
     set("--bg", t.backgroundColor);
     set("--bg2", t.secondaryBackgroundColor);
-    set("--text", t.textColor);
-    set("--text-muted", t.textColor && hexA(t.textColor, 0.6));
+    set("--text", text);
+    set("--text-muted", text && mutedColor(text, t.backgroundColor, surfaces, 4.5));
     set("--border", t.borderColor || (t.textColor && hexA(t.textColor, 0.2)));
     set("--border-light", t.textColor && hexA(t.textColor, 0.1));
-    set("--link", t.linkColor || t.primaryColor);
+    set("--link", ensureContrast(t.linkColor || t.primaryColor, surfaces, 4.5, ink));
     set("--sidebar-bg", t.sidebarBackgroundColor || t.secondaryBackgroundColor);
     set("--widget-bg", t.widgetBackgroundColor || t.secondaryBackgroundColor);
     set("--widget-border", t.widgetBorderColor || "transparent");
@@ -1693,6 +1743,7 @@
     T.chartColors = t.chartColors;
     T.textColor = t.textColor;
     T.font = t.font;
+    T.design = d;
     rerenderCharts();
   }
   function rerenderCharts() {
@@ -1703,7 +1754,8 @@
   }
   function setViewer(change) {
     const eff = effectiveTheme();
-    T.viewer = Object.assign({ preset: eff.preset, mode: eff.mode }, change, { basis: baseKey(baseTheme()) });
+    T.viewer = Object.assign({ scheme: eff.scheme, design: eff.design, mode: eff.mode }, change, { basis: baseKey(baseTheme()) });
+    delete T.viewer.preset;
     saveViewer();
     applyTheme();
   }
@@ -1714,22 +1766,46 @@
       b.classList.toggle("active", b.dataset.mode === eff.mode);
       b.setAttribute("aria-pressed", b.dataset.mode === eff.mode ? "true" : "false");
     });
-    const sel = $("#stStyleSelect");
-    if (sel.options.length !== T.presets.length) {
-      sel.innerHTML = "";
-      T.presets.forEach((p) => sel.appendChild(h("option", { value: p.name, text: p.label })));
+    // design styles (themed combobox, no native <select>)
+    if (!T.designCb || T.designCb.n !== T.designs.length) {
+      T.designCb = StUI.combobox({ id: "stDesignSelect", label: "Design style", testid: "st-design-select",
+        options: T.designs.map((d) => ({ label: d.label, hint: d.description })),
+        value: 0, onChange: (i) => setViewer({ design: T.designs[i].name }) });
+      T.designCb.n = T.designs.length;
+      $("#stDesignMount").replaceChildren(T.designCb.el);
+      const cards = $("#stDesignCards");
+      cards.innerHTML = "";
+      T.designs.forEach((d) => {
+        // a mini preview: the card itself is rendered in that design (scoped data-design)
+        const b = h("button", { type: "button", class: "design-card", "data-design-card": d.name, title: d.description },
+          h("span", { class: "dc-preview", "data-design": d.name },
+            h("span", { class: "dc-bar" }), h("span", { class: "dc-btn", text: "Ok" }), h("span", { class: "dc-input" })),
+          h("span", { class: "dc-label", text: d.label }));
+        b.addEventListener("click", () => setViewer({ design: d.name }));
+        cards.appendChild(b);
+      });
+    }
+    T.designCb.setValue(Math.max(0, T.designs.findIndex((d) => d.name === eff.design)));
+    document.querySelectorAll(".design-card").forEach((b) => b.classList.toggle("active", b.dataset.designCard === eff.design));
+    // color schemes
+    if (!T.schemeCb || T.schemeCb.n !== T.presets.length) {
+      T.schemeCb = StUI.combobox({ id: "stStyleSelect", label: "Color scheme", testid: "st-scheme-select",
+        options: T.presets.map((p) => ({ label: p.label, swatches: [p.light.backgroundColor, p.light.primaryColor, p.light.chartColors[0], p.dark.backgroundColor] })),
+        value: 0, onChange: (i) => setViewer({ scheme: T.presets[i].name }) });
+      T.schemeCb.n = T.presets.length;
+      $("#stSchemeMount").replaceChildren(T.schemeCb.el);
       const sw = $("#stSwatches");
       sw.innerHTML = "";
       T.presets.forEach((p) => {
         const dots = h("span", { class: "dots" }, [p.light.backgroundColor, p.light.primaryColor, p.light.chartColors[0], p.dark.backgroundColor]
           .map((c) => h("span", { style: { background: c } })));
         const b = h("button", { type: "button", class: "style-swatch", "data-style": p.name, title: p.label, style: { fontFamily: p.light.font } }, dots, h("span", { text: p.label }));
-        b.addEventListener("click", () => setViewer({ preset: p.name }));
+        b.addEventListener("click", () => setViewer({ scheme: p.name }));
         sw.appendChild(b);
       });
     }
-    sel.value = eff.preset;
-    document.querySelectorAll(".style-swatch").forEach((b) => b.classList.toggle("active", b.dataset.style === eff.preset));
+    T.schemeCb.setValue(Math.max(0, T.presets.findIndex((p) => p.name === eff.scheme)));
+    document.querySelectorAll(".style-swatch").forEach((b) => b.classList.toggle("active", b.dataset.style === eff.scheme));
   }
 
   // ------------------------------------------------------------------ page chrome
@@ -1743,7 +1819,7 @@
   }
 
   function applyPageConfig(m) {
-    if (m.title) { document.title = m.title; S.pageConfig.title = m.title; }
+    if (m.title) { document.title = m.title; S.pageConfig.title = m.title; $("#stRoot-0").dataset.title = m.title; }
     if (m.icon) {
       let link = document.querySelector("link[rel=icon]");
       const isUrl = /^(https?:|data:|\/)/.test(m.icon);
@@ -1809,9 +1885,9 @@
 
   // ------------------------------------------------------------------ theme & chrome events
   $("#stSettings").addEventListener("click", (ev) => { ev.stopPropagation(); $("#stSettingsPanel").hidden = !$("#stSettingsPanel").hidden; });
-  document.addEventListener("click", (ev) => { if (!$("#stSettingsWrap").contains(ev.target)) $("#stSettingsPanel").hidden = true; });
+  document.addEventListener("click", (ev) => { if (!$("#stSettingsWrap").contains(ev.target) && !StUI.inPopup(ev.target)) { $("#stSettingsPanel").hidden = true; } });
   document.querySelectorAll("#stModeSeg button").forEach((b) => b.addEventListener("click", () => setViewer({ mode: b.dataset.mode })));
-  $("#stStyleSelect").addEventListener("change", (ev) => setViewer({ preset: ev.target.value }));
+
   if (darkMq) darkMq.addEventListener("change", () => { T.lastKey = null; applyTheme(); });
   $("#stRerun").addEventListener("click", () => sendRerun({}));
   $("#stSidebarClose").addEventListener("click", () => document.getElementById("stApp").classList.add("sidebar-collapsed"));
@@ -1835,6 +1911,9 @@
   }
 
   for (const i of [0, 1, 2, 3]) S.roots[i] = makeRoot(i);
+  // like Streamlit: on narrow screens the sidebar starts collapsed (it would cover the page)
+  if (window.matchMedia && window.matchMedia("(max-width: 800px)").matches) document.getElementById("stApp").classList.add("sidebar-collapsed");
+  $("#stRoot-0").dataset.title = document.title; // used by designs that draw a window title bar
   window.__streamlitd = S; // for debugging/tests
   connect();
 })();

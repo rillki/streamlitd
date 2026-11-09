@@ -36,7 +36,7 @@ function chromePath() {
   return undefined;
 }
 
-const only = process.env.ONLY; // ONLY=tutorial | ONLY=data regenerates a subset
+const only = process.env.ONLY; // ONLY=tutorial | data | themes regenerates a subset
 
 (async () => {
   for (const [n, p] of Object.entries(apps)) start(n, p);
@@ -65,11 +65,14 @@ const only = process.env.ONLY; // ONLY=tutorial | ONLY=data regenerates a subset
     console.log("  " + name + ".png");
     await pg.context().close();
   }
-  const dark = (preset = "streamlit") => ({ preset, mode: "dark", basis: "streamlit/auto" });
+  // viewer appearance stored in localStorage; basis = the app's scheme/design/mode it applies to
+  const look = (scheme, design, mode) => ({ scheme, design, mode, basis: "streamlit/streamlit/auto" });
+  const dark = (scheme = "streamlit") => look(scheme, "streamlit", "dark");
 
   let p;
   if (only === "tutorial") return tutorialShots();
   if (only === "data") return dataShots();
+  if (only === "themes") return themeShots();
   // hello
   p = await page("hello");
   await rerun(p, async () => { await p.getByLabel("Your name").fill("Kirill"); await p.getByLabel("Your name").press("Enter"); });
@@ -86,7 +89,8 @@ const only = process.env.ONLY; // ONLY=tutorial | ONLY=data regenerates a subset
   p = await page("widgets");
   await p.getByRole("tab", { name: "Forms" }).click();
   await p.getByLabel("Email").fill("ann@example.com");
-  await p.getByLabel("Plan").selectOption({ label: "Pro" });
+  await p.getByLabel("Plan").click();
+  await p.locator("#stPopups .st-option", { hasText: /^Pro$/ }).click();
   await rerun(p, () => p.getByRole("button", { name: "Sign up" }).click());
   await shot(p, "forms");
   p = await page("widgets");
@@ -137,6 +141,11 @@ const only = process.env.ONLY; // ONLY=tutorial | ONLY=data regenerates a subset
   await p.waitForSelector(".katex");
   await p.waitForSelector("code.hljs");
   await shot(p, "math-code", { wait: 1000 });
+  // themed controls: calendar open in the design gallery
+  p = await page("themes", "/", { height: 760 });
+  await p.locator("#stRoot-0").getByRole("button", { name: "Open calendar" }).scrollIntoViewIfNeeded();
+  await p.locator("#stRoot-0").getByRole("button", { name: "Open calendar" }).click();
+  await shot(p, "controls", { wait: 500 });
   p = await page("extras");
   await p.getByRole("tab", { name: "Plotly" }).click();
   await p.waitForSelector("[data-testid=st-plotly][data-rendered]");
@@ -146,13 +155,33 @@ const only = process.env.ONLY; // ONLY=tutorial | ONLY=data regenerates a subset
   await p.waitForSelector("[data-testid=st-map][data-rendered]");
   await shot(p, "map", { wait: 3500 });
 
-  // themes: one shot per preset (light + dark); tools/optimize_images.py builds the contact sheet
-  const presets = ["streamlit", "minimal", "ocean", "forest", "sunset", "finance", "solarized", "paper"];
-  for (const preset of presets) for (const mode of ["light", "dark"]) {
-    p = await page("themes", "/", { appearance: { preset, mode, basis: "streamlit/auto" } });
+  await themeShots();
+  async function themeShots() {
+  // design styles (streamlit scheme) and color schemes (streamlit design), light + dark;
+  // tools/optimize_images.py builds the contact sheets
+  const designs = ["streamlit", "terminal", "retro", "win95", "xp", "brutalist", "material", "glass"];
+  const schemes = ["streamlit", "minimal", "ocean", "forest", "sunset", "finance", "solarized", "paper"];
+  for (const design of designs) for (const mode of ["light", "dark"]) {
+    p = await page("themes", "/", { appearance: look("streamlit", design, mode) });
     await p.waitForSelector("[data-testid=st-vega-lite][data-rendered]");
-    await shot(p, `theme-${preset}-${mode}`, { wait: 900 });
+    await shot(p, `design-${design}-${mode}`, { wait: 900 });
   }
+  for (const scheme of schemes) for (const mode of ["light", "dark"]) {
+    p = await page("themes", "/", { appearance: look(scheme, "streamlit", mode) });
+    await p.waitForSelector("[data-testid=st-vega-lite][data-rendered]");
+    await shot(p, `scheme-${scheme}-${mode}`, { wait: 900 });
+  }
+  // a few design × scheme combinations, full page with the dialog open
+  const combos = [["terminal", "solarized", "dark"], ["xp", "ocean", "light"], ["win95", "paper", "light"], ["retro", "sunset", "dark"],
+    ["brutalist", "minimal", "light"], ["glass", "finance", "dark"], ["material", "forest", "light"]];
+  for (const [design, scheme, mode] of combos) {
+    p = await page("themes", "/", { appearance: look(scheme, design, mode), height: 900 });
+    await p.waitForSelector("[data-testid=st-vega-lite][data-rendered]");
+    await rerun(p, () => p.getByRole("button", { name: "Open dialog" }).click());
+    await shot(p, `combo-${design}-${scheme}-${mode}`, { wait: 900 });
+  }
+  }
+  if (only === "themes") return;
 
   // login page
   p = await (async () => {
@@ -181,10 +210,11 @@ const only = process.env.ONLY; // ONLY=tutorial | ONLY=data regenerates a subset
   p = await page("tutorial", "/", { height: 1100 });
   await p.getByText("➕ Add a sale").click();
   await p.getByRole("spinbutton", { name: "Units" }).fill("25");
-  await p.getByRole("combobox", { name: "Product" }).selectOption({ label: "Gadget" });
+  await p.getByRole("combobox", { name: "Product" }).click();
+  await p.locator("#stPopups .st-option", { hasText: /^Gadget$/ }).click();
   await p.getByText("➕ Add a sale").scrollIntoViewIfNeeded();
   await shot(p, "tutorial-form");
-  p = await page("tutorial", "/", { height: 860, appearance: { preset: "finance", mode: "dark", basis: "streamlit/auto" } });
+  p = await page("tutorial", "/", { height: 860, appearance: look("finance", "xp", "dark") });
   await p.waitForSelector("[data-testid=st-vega-lite][data-rendered]");
   await shot(p, "tutorial-dark", { wait: 1200 });
   }

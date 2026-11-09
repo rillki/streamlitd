@@ -65,7 +65,7 @@ mixin StreamlitMain!app;
   let count = 0;
   window.addEventListener("message", (e) => {
     if (e.data.type !== "streamlit:render") return;
-    const { args, theme, disabled } = e.data;      // args from D, theme of the active design style
+    const { args, theme, disabled } = e.data;      // args from D; theme: design, colorScheme, base, colors
     document.getElementById("label").textContent = args.label;
     document.body.style.color = theme.textColor;
   });
@@ -81,12 +81,12 @@ mixin StreamlitMain!app;
 | Direction | Message | Fields |
 |---|---|---|
 | component → app | `streamlit:componentReady` | `apiVersion` |
-| app → component | `streamlit:render` | `args` (JSON), `dfs` (always empty), `disabled`, `theme` (`base`, `primaryColor`, `backgroundColor`, `secondaryBackgroundColor`, `textColor`, `font`) |
+| app → component | `streamlit:render` | `args` (JSON), `dfs` (always empty), `disabled`, `theme` (`base`, `primaryColor`, `backgroundColor`, `secondaryBackgroundColor`, `textColor`, `font`, plus streamlitd's `design` and `colorScheme`) |
 | component → app | `streamlit:setComponentValue` | `value`, `dataType: "json"` |
 | component → app | `streamlit:setFrameHeight` | `height` in pixels (ignored when `height:` was given in D) |
 
 Component → app messages carry `isStreamlitMessage: true`. `render` is sent after `componentReady`,
-whenever `args` change, and when the design style changes.
+whenever `args` change, and when the design style, color scheme or mode changes.
 
 ### Reusing Streamlit components
 

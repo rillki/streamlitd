@@ -37,10 +37,16 @@ dub run --compiler=ldc2          # → http://localhost:8501
 | ![Chat](docs/images/chat-dark.png) **Chat UI** and **multipage** navigation (dark mode) | ![Dialog](docs/images/dialog.png) **Dialogs, fragments** and partial reruns |
 | ![Math and code](docs/images/math-code.png) **LaTeX** (KaTeX) and syntax-highlighted code | ![Map](docs/images/map.png) **Maps** (Leaflet, configurable tiles) |
 | ![Layout](docs/images/layout.png) **Layout**: columns, tabs, expanders, containers, popovers | ![Login](docs/images/login.png) **Login**: password users and OIDC single sign-on |
+| ![Controls](docs/images/controls.png) **Themed controls**: searchable selects, calendar, time list and color picker (no native browser pop-ups) | ![win95 × paper](docs/images/combo-win95-paper-light.png) Design × scheme: `win95` × `paper` |
 
-**8 design styles**, each in light and dark ([theming](docs/theming.md)):
+**8 design styles × 8 color schemes × light/dark** ([theming](docs/theming.md)): streamlit, terminal, retro,
+win95, XP, brutalist, material and glass, each usable with any color scheme:
 
-![Design styles](docs/images/themes-light.png)
+![Design styles](docs/images/designs-light.png)
+
+| | |
+|---|---|
+| ![terminal × solarized](docs/images/combo-terminal-solarized-dark.png) `terminal` × `solarized`, dark | ![win95 × paper](docs/images/combo-win95-paper-light.png) `win95` × `paper` |
 
 ## Features
 
@@ -54,8 +60,9 @@ dub run --compiler=ldc2          # → http://localhost:8501
   status containers, **fragments** with `runEvery` auto-refresh.
 - **Data:** a `DataFrame` type (structs, CSV, JSON; filter, sort, groupBy), interactive tables, a
   data editor, Vega-Lite charts, Plotly, maps, images, audio, video.
-- **Design styles:** 8 presets plus custom colors and fonts (Streamlit-compatible `[theme]` keys),
-  and a viewer style menu.
+- **Theming:** 8 design styles (terminal, retro, win95, XP, brutalist, material, glass, streamlit) ×
+  8 color schemes × light/dark, custom colors and fonts (Streamlit-compatible `[theme]` keys), and a
+  viewer appearance menu.
 - **Production:**
   - worker threads, so CPU-heavy sessions don't block other users
   - `config.toml` and `secrets.toml` (existing `.streamlit/` files work)

@@ -11,7 +11,7 @@ import streamlitd.errors;
 import streamlitd.media;
 import streamlitd.state;
 import streamlitd.util;
-import streamlitd.theme : Theme, presetsJson, themeJson;
+import streamlitd.theme : Theme, presetsJson, designsJson, themeJson;
 
 /// The app entry point: called on every rerun.
 alias AppFn = void delegate(St st);
@@ -160,6 +160,11 @@ final class AppSession
 
 	/// App-wide default theme (from server options / CLI).
 	Theme defaultTheme;
+	/// Theme last set with `st.setTheme` in this session.
+	package Theme appTheme;
+	package bool appThemeSet;
+	/// Viewer appearance menu allowed in the current run (reset at the start of each full run).
+	package bool appAllowSwitch = true;
 	/// Whether viewers may change style/mode from the settings menu.
 	bool allowThemeSwitch = true;
 
@@ -232,7 +237,7 @@ final class AppSession
 	/// Message sent once when the connection is opened.
 	Json newSessionMessage()
 	{
-		return jo("type", "new_session", "sessionId", id, "themes", presetsJson(),
+		return jo("type", "new_session", "sessionId", id, "themes", presetsJson(), "designs", designsJson(),
 			"theme", themeJson(defaultTheme, allowThemeSwitch));
 	}
 
@@ -433,6 +438,7 @@ final class AppSession
 		{
 			mediaRefs = null;
 			newFragments = null;
+			appAllowSwitch = true;
 			pageConfigSent = false;
 			chatInputUsed = false;
 		}

@@ -80,7 +80,7 @@ overridden with `-e STREAMLITD_SERVER_BASEURLPATH=/sales` or with arguments afte
 name:
 
 ```sh
-docker run -p 8501:8501 sales-dashboard --theme ocean --max-sessions 200
+docker run -p 8501:8501 sales-dashboard --color-scheme ocean --max-sessions 200
 ```
 
 ### docker-compose

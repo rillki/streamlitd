@@ -23,7 +23,7 @@
 | `dataframe.d` | `DataFrame` |
 | `cache.d` | `cacheData` / `cacheResource` |
 | `media.d` | in-memory media (images, downloads) and uploads |
-| `theme.d` | design-style presets, `Theme`, `ThemeTokens` |
+| `theme.d` | design styles (`DesignStyle`), color schemes, `Theme`, `ThemeTokens` |
 | `auth.d`, `authserver.d` | PBKDF2, signed cookies; login routes and OIDC |
 | `testing.d` | `AppTest` |
 | `assetlist.d` | generated list of embedded assets (`tools/gen_assets.py`) |
@@ -42,7 +42,7 @@ All messages are JSON over one WebSocket per tab (`<base>/_stcore/ws`).
 
 | Message | Meaning |
 |---|---|
-| `new_session` | `sessionId`, theme presets, default theme |
+| `new_session` | `sessionId`, color schemes (`themes`), design styles (`designs`), default theme |
 | `script_started` / `script_finished` | run boundaries: `run` id, `status` (`ok`, `error`, `stopped`, `rerun`), `fragment` + `path` for fragment runs |
 | `delta` | `path` (e.g. `[0, 3, 1]`) + `el` (element JSON with `kind`, and `block` for containers) |
 | `page_config`, `set_theme`, `navigation`, `set_page`, `query_params`, `toast`, `effect`, `logo`, `navigate` | page-level effects |
@@ -63,6 +63,34 @@ Element renderers live in `RENDERERS`, container renderers in `BLOCKS`. Heavy li
 (Vega, Plotly, KaTeX, highlight.js, Leaflet) load lazily from `static/vendor/` the first time
 they are needed.
 
+## UI kit: themed controls instead of native browser pop-ups
+
+streamlitd never uses the browser's own `<select>`, date, time or color pop-ups: they cannot be styled
+and look different on every OS. `assets/ui.js` (`window.StUI`, loaded before `app.js`) provides:
+
+| Component | Used by | Notes |
+|---|---|---|
+| `openPopup(anchor, content, opts)` | every pop-up | rendered into a body-level portal `#stPopups` (`position: fixed`), so it is never clipped by `overflow` in dataframes, expanders, dialogs, the sidebar or the settings panel; flips above the anchor when there is no room below, stays inside the viewport, follows scrolling, closes on outside click / Escape; nested pop-ups (the calendar's month/year lists) stack |
+| `combobox` | `selectbox`, settings menu | searchable (type to filter, like Streamlit), ↑/↓/Home/End/PageUp/PageDown/Enter/Esc/Tab, ARIA `combobox` + `listbox` + `option`, placeholder |
+| `multiCombobox` | `multiselect` | chips, list stays open while picking, Backspace removes the last chip, clear-all, `maxSelections` |
+| `datePicker` | `date_input` | typed `YYYY-MM-DD` or a calendar grid (min/max, today, keyboard: arrows/PageUp/PageDown/Home/End) |
+| `timePicker` | `time_input` | typed `HH:MM` or a stepped, filterable list |
+| `colorPicker` | `color_picker` | saturation/brightness area, hue slider, hex field, quick swatches from the color scheme; committed when the pop-up closes |
+
+The components send the same values as before (indices, ISO dates, `HH:MM`, `#rrggbb`), so the D side
+did not change. Pop-ups get the class `.st-popup` and follow the design style via `assets/designs.css`.
+To add a control: build it in `ui.js` from `openPopup` and the shared listbox renderer, style it with
+tokens in `style.css`, and add per-design rules where the design needs them.
+
+## Accessible colors
+
+`applyTheme()` derives contrast-safe tokens from each color scheme (and from user overrides):
+`--text` and `--text-muted` are adjusted to reach 4.5:1 on every surface (including primary-tinted ones),
+`--primary-strong` is the primary color darkened/lightened until its text (`--on-primary`) reaches 4.5:1
+(used for filled buttons, chips, selected items), and `--primary-ink` is the primary color adjusted for
+use as text (links, active tabs, accents). The brand `--primary` itself stays for borders, rings and
+decoration.
+
 ## Widget values
 
 `St.widget!T` (in `delta.d`) is the single code path for all widgets. It:
@@ -82,7 +110,8 @@ on the server, so a tampered value falls back to the default.
    or `widget!T(...)` for inputs.
 2. Add a renderer `my_el(node, el)` to `RENDERERS` in `assets/app.js`. Set `node.update` if it can
    update in place.
-3. Add styles to `assets/style.css`, using the theme tokens (`var(--primary)`, ...).
+3. Add styles to `assets/style.css`, using the theme tokens (`var(--primary)`, ...). If a design style
+   needs different chrome for it, add scoped rules to `assets/designs.css` (see [Theming](theming.md#writing-your-own-design-contributors)).
 4. Add an `AppTest` unit test (`tests/unit/apptests.d`) and a Playwright check (`tests/e2e/specs/`).
 5. Regenerate the docs: `python3 tools/gen_api_docs.py`.
 

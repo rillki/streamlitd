@@ -104,7 +104,9 @@ string[] applyConfig(ref ServerOptions o, Json cfg)
 		{
 			switch (k)
 			{
-				case "preset": o.theme.preset = v.get!string; break;
+				case "scheme":
+				case "preset": o.theme.scheme = v.get!string; break; // `preset` = old name
+				case "design": o.theme.design = v.get!string; break;
 				case "mode": o.theme.mode = v.get!string; break;
 				case "base": o.theme.mode = v.get!string; break; // Streamlit's light/dark base
 				case "allowSwitch": o.allowThemeSwitch = v.get!bool; break;
@@ -163,7 +165,7 @@ void applyEnv(ref ServerOptions o, string[string] env)
 	cfg["theme"] = Json.emptyObject;
 	static immutable serverKeys = ["port", "address", "maxUploadSize", "scriptThreads", "baseUrlPath",
 		"maxSessions", "idleTimeout", "headless"];
-	static immutable themeKeys = ["preset", "mode", "base", "primaryColor", "backgroundColor",
+	static immutable themeKeys = ["scheme", "preset", "design", "mode", "base", "primaryColor", "backgroundColor",
 		"secondaryBackgroundColor", "textColor", "font", "headingFont", "codeFont", "baseRadius"];
 	foreach (k; serverKeys)
 		if (auto v = ("STREAMLITD_SERVER_" ~ k.toUpper) in env)
@@ -212,9 +214,13 @@ primaryColor = "#123456"
 `));
 	assert(o.port == 9000 && o.baseUrlPath == "app" && o.allowedOrigins == ["https://a.example"]);
 	assert(o.scriptThreads == 2);
-	assert(o.theme.preset == "ocean" && o.theme.mode == "dark" && o.theme.overrides.primaryColor == "#123456");
+	assert(o.theme.scheme == "ocean" && o.theme.mode == "dark" && o.theme.overrides.primaryColor == "#123456");
 	applyEnv(o, ["STREAMLITD_SERVER_PORT": "9100", "STREAMLITD_THEME_PRESET": "paper"]);
-	assert(o.port == 9100 && o.theme.preset == "paper");
+	assert(o.port == 9100 && o.theme.scheme == "paper");
+	applyConfig(o, parseToml("[theme]\nscheme = \"forest\"\ndesign = \"terminal\"\n"));
+	assert(o.theme.scheme == "forest" && o.theme.design == "terminal");
+	applyEnv(o, ["STREAMLITD_THEME_DESIGN": "xp", "STREAMLITD_THEME_SCHEME": "ocean"]);
+	assert(o.theme.design == "xp" && o.theme.scheme == "ocean");
 	// Streamlit-only options are ignored with a warning, not fatal
 	auto w = applyConfig(o, parseToml("[server]\nrunOnSave = true\nport = 9200\n[browser]\ngatherUsageStats = false\n[theme]\nfont = \"serif\"\n"));
 	assert(w.length == 2 && o.port == 9200, w.to!string);

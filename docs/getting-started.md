@@ -89,7 +89,7 @@ from the top**, and the page updates with the new output. That is the whole prog
 Arguments after `--` go to your app:
 
 ```sh
-dub run --compiler=ldc2 -- --port 8080 --theme ocean
+dub run --compiler=ldc2 -- --port 8080 --design terminal --color-scheme ocean
 ./myapp --help            # all options
 ```
 
@@ -97,7 +97,7 @@ dub run --compiler=ldc2 -- --port 8080 --theme ocean
 |---|---|
 | `--port`, `-p` | port (default 8501) |
 | `--host` | bind address (default `0.0.0.0`) |
-| `--theme`, `--theme-mode` | design style and `auto`/`light`/`dark` |
+| `--design`, `--color-scheme`, `--theme-mode` | design style (terminal, retro, win95, xp, …), color scheme and `auto`/`light`/`dark` |
 | `--base-url-path` | serve under a prefix such as `/myapp` |
 | `--script-threads` | worker threads for scripts (`-1` = CPU cores, `0` = single-threaded) |
 | `--quiet`, `-q` | no startup banner |

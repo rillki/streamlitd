@@ -1,58 +1,101 @@
-# Theming
+# Theming: design styles, color schemes and mode
 
-Streamlit itself offers only Light/Dark ("Use system setting") plus custom colors in
-`config.toml`. streamlitd keeps that model and adds **8 named design styles (presets)**. Each
-preset has a light and a dark variant.
+A streamlitd page's look is made of three independent choices:
 
-![all styles, light](images/themes-light.png)
-![all styles, dark](images/themes-dark.png)
+| Axis | What it changes | Choices |
+|---|---|---|
+| **Design style** | the *shape* of the UI: fonts, borders, corners, shadows, buttons, inputs, title bars, tabs, dialogs, chart strokes | 8 designs |
+| **Color scheme** | the *palette*: background, text, primary color, chart colors | 8 schemes |
+| **Mode** | light or dark variant of the scheme | `auto` (follows the OS), `light`, `dark` |
 
-| Preset | Look |
+Every design works with every color scheme in both modes: 8 × 8 × 2 = 128 combinations.
+Streamlit itself only offers Light/Dark plus custom colors in `config.toml`. streamlitd keeps
+that model (the same `[theme]` keys work) and adds the two named axes.
+
+## Design styles
+
+![design styles, light](images/designs-light.png)
+![design styles, dark](images/designs-dark.png)
+
+| Design | Look |
 |---|---|
 | `streamlit` | the default Streamlit look |
+| `terminal` | monospace everywhere, `[ bracket ]` buttons, `#` headings, `[x]` checkboxes, dashed borders, `>` input prompts; phosphor glow and scanlines in dark mode |
+| `retro` | 8-bit: chunky 3px borders, hard offset shadows that "press" on click, uppercase type, blocky progress bars |
+| `win95` | classic 3D bevels, raised buttons and sunken inputs, gradient title bars on the page, expanders and dialogs, property-sheet tabs |
+| `xp` | XP-inspired "Luna": glossy rounded title bars, gradient buttons with a highlighted hover, task-pane sidebar, block progress bar |
+| `brutalist` | thick borders, hard shadows, bold uppercase headings, high contrast |
+| `material` | Material 3–like: pill buttons, filled inputs with an underline indicator, elevated cards, large rounded dialogs |
+| `glass` | glassmorphism: translucent blurred panels over a soft gradient backdrop, pill tabs |
+
+Designs draw all their colors from the active color scheme. The XP title bars use the scheme's
+primary color, the win95 chrome is derived from its secondary background, and so on. A few
+designs bring their own fonts: `terminal` and `retro` (monospace), `win95` and `xp` (Tahoma),
+and `material` (Roboto). They also adjust chart line widths, bar corners and grid style.
+
+Some combinations:
+
+| | |
+|---|---|
+| ![terminal × solarized, dark](images/combo-terminal-solarized-dark.png) `terminal` × `solarized`, dark | ![xp × ocean](images/combo-xp-ocean-light.png) `xp` × `ocean`, light |
+| ![win95 × paper](images/combo-win95-paper-light.png) `win95` × `paper`, light | ![retro × sunset, dark](images/combo-retro-sunset-dark.png) `retro` × `sunset`, dark |
+| ![glass × finance, dark](images/combo-glass-finance-dark.png) `glass` × `finance`, dark | ![material × forest](images/combo-material-forest-light.png) `material` × `forest`, light |
+
+## Color schemes
+
+![color schemes, light](images/schemes-light.png)
+![color schemes, dark](images/schemes-dark.png)
+
+| Scheme | Palette |
+|---|---|
+| `streamlit` | the default Streamlit colors |
 | `minimal` | monochrome, outlined inputs |
-| `ocean` | cool blues, rounder corners |
+| `ocean` | cool blues |
 | `forest` | greens on warm off-white |
 | `sunset` | orange/violet, rounded font |
-| `finance` | navy and green, dashboard look |
+| `finance` | navy and green |
 | `solarized` | Solarized palettes, monospace headings |
-| `paper` | editorial serif |
+| `paper` | warm paper, serif type |
 
-## Choosing a style
+## Choosing design, scheme and mode
 
-From code:
+**From code.** Any part you leave out keeps its current value:
 
 <!-- wrap -->
 ```d
-st.setTheme("ocean");                       // mode stays "auto" (follows the OS)
-st.setTheme("finance", "dark");             // "auto" | "light" | "dark"
-st.setPageConfig(title: "Report", theme: "paper", allowThemeSwitch: false);
+st.setTheme(design: "terminal");                              // only the design
+st.setTheme(scheme: "ocean", mode: "dark");                    // scheme + mode
+st.setTheme("finance", "dark", "xp");                          // scheme, mode, design (positional)
+st.setPageConfig(title: "Report", design: "win95", colorScheme: "paper", allowThemeSwitch: false);
 ```
 
-From configuration, as the default for all users:
+`designNames()` and `colorSchemeNames()` list the valid names at runtime. Unknown names raise
+an error that lists the valid ones.
+
+**From configuration**, as the default for all users:
 
 ```toml
 # .streamlitd/config.toml
 [theme]
-preset = "finance"
+design = "material"
+scheme = "forest"      # `preset` is accepted as an old name
 mode = "dark"          # Streamlit's `base = "dark"` works too
 ```
 
-From the command line:
+**From the command line** or **environment**:
 
 ```sh
-./app --theme ocean --theme-mode dark
+./app --design retro --color-scheme sunset --theme-mode dark      # --theme is an alias of --color-scheme
+STREAMLITD_THEME_DESIGN=glass STREAMLITD_THEME_SCHEME=ocean ./app
 ```
-
-The list of presets is available at runtime as `themePresetNames()`.
 
 ## Custom colors and fonts
 
-Override any token on top of a preset. The names follow Streamlit's `[theme]` keys:
+Override any token on top of the scheme and design. The names follow Streamlit's `[theme]` keys:
 
 <!-- wrap -->
 ```d
-auto t = Theme("minimal", "light");
+auto t = Theme("minimal", "light", "material");   // scheme, mode, design
 t.overrides.primaryColor = "#7c3aed";
 t.overrides.font = fontSerif;          // also fontSans, fontMono, fontRounded or any CSS font-family
 t.overrides.baseRadius = "1rem";
@@ -60,12 +103,21 @@ t.overrides.chartColors = ["#7c3aed", "#06b6d4", "#f59e0b"];
 st.setTheme(t);
 ```
 
+Precedence, lowest to highest:
+
+1. the color scheme's tokens;
+2. the tokens a design forces (fonts, corner radius);
+3. your explicit `overrides`.
+
+So `Theme("paper", "light", "terminal")` uses the terminal's monospace font, while an override of
+`font` wins over both.
+
 | Token | Meaning |
 |---|---|
-| `primaryColor` | buttons, sliders, active tabs, accents |
+| `primaryColor` | buttons, sliders, active tabs, title bars, accents |
 | `primaryTextColor` | text on primary-colored surfaces |
 | `backgroundColor` | page background |
-| `secondaryBackgroundColor` | sidebar, code blocks, inputs (unless overridden) |
+| `secondaryBackgroundColor` | sidebar, code blocks, inputs, win95 chrome |
 | `textColor` | text; muted text and borders are derived from it |
 | `linkColor` | links |
 | `borderColor` | borders (default: derived from `textColor`) |
@@ -81,7 +133,7 @@ In `config.toml`:
 
 ```toml
 [theme]
-preset = "streamlit"
+scheme = "streamlit"
 primaryColor = "#0055aa"
 font = "serif"
 chartColors = ["#0055aa", "#ff8800", "#22aa55"]
@@ -89,26 +141,71 @@ chartColors = ["#0055aa", "#ff8800", "#22aa55"]
 
 or on the command line: `--theme.primaryColor=#0055aa`.
 
-## The viewer style menu
+## The viewer appearance menu
 
 The ⚙ button in the top-right corner lets **viewers** choose:
 
-- the mode: System / Light / Dark;
-- any design style.
+- the design style (a list and preview cards);
+- the color scheme (a list and swatches);
+- the mode: System, Light or Dark.
 
 The choice is stored in the browser's local storage. It is dropped as soon as the app
-explicitly switches to a different theme, so an app-driven style change always wins. Hide the
-menu with `setTheme(t, allowThemeSwitch: false)`, `setPageConfig(allowThemeSwitch: false)`,
+explicitly switches to a different theme, so an app-driven change always wins. Hide the menu with
+`setTheme(t, allowThemeSwitch: false)`, `setPageConfig(allowThemeSwitch: false)`,
 `[theme] allowSwitch = false`, or `--no-theme-switch`.
 
 ## Charts and components follow the theme
 
-Chart palettes, fonts and grid colors (Vega-Lite and Plotly), map markers and custom components
-(through the `theme` field of the render message) all use the active style. Charts re-render
-when the style or mode changes.
+Chart palettes, fonts, grid colors, line widths and bar corners (Vega-Lite and Plotly), map
+markers, and custom components all use the active design and scheme. Components receive them
+through the `theme` field of the render message: `design`, `colorScheme`, `base` and the colors.
+Charts re-render when the design, scheme or mode changes.
+
+## Pop-ups and controls follow the design
+
+Drop-downs, multiselect lists, the calendar, the time list and the color picker are streamlitd's own
+components (no native browser pop-ups), so they take the design's look as well: dashed in terminal, beveled
+in win95, framed in xp, hard shadows in retro/brutalist, elevated in material and blurred in glass.
+
+## Accessibility
+
+Text colors are checked automatically: body text, muted text, primary-colored text and text on primary fills
+are adjusted per color scheme (and per override) to reach WCAG AA contrast (4.5:1). The brand primary color is
+kept for borders and decoration. The UI audit (see [Testing](testing.md#ui-audit)) verifies this for every
+design × scheme × mode.
+
+
+Decorative characters added by designs (terminal brackets and `#` prefixes, the win95 window
+title) use CSS generated content with empty alternative text, so screen readers and accessible
+names stay the same in every design. Check contrast when you combine custom colors with a design.
 
 ## Offline fonts
 
-All presets use system font stacks. No web fonts are downloaded, so apps look right on
-air-gapped networks. To use a specific font family, install it on the client machines (or load
-it with `st.html("<style>@font-face{...}</style>")`) and set `font:`.
+All designs and schemes use system font stacks. No web fonts are downloaded, so apps look right
+on air-gapped networks. If a font such as Tahoma or Roboto isn't installed, the next font in the
+stack is used. To use a specific font family, install it on the client machines (or load it with
+`st.html("<style>@font-face{...}</style>")`) and set `font:`.
+
+## Writing your own design (contributors)
+
+A design has two parts:
+
+- a `DesignStyle` entry in `source/streamlitd/theme.d`: name, label, description, forced fonts
+  and radius, and chart tweaks;
+- a block of rules in `assets/designs.css`, all scoped by `:root[data-design="<name>"]`.
+
+Surfaces, text and borders must use only the scheme tokens (`--primary`, `--bg`, `--bg2`,
+`--text`, `--border`, `--widget-bg`, `--chart-N`, …) and `color-mix()`, so the design works with
+every scheme and mode. The only fixed colors allowed are:
+
+- structural black and white (bevel shading, title-bar text);
+- small signature accents that are always blended with a scheme token, e.g.
+  `color-mix(in srgb, var(--primary) 35%, #ffb733)` for the xp hover glow. Add a preview card rule (`.dc-preview[data-design="<name>"]`), then run
+`python3 tools/gen_assets.py`, and add a probe for it to `tests/e2e/specs/themes.spec.js`.
+
+For a one-off tweak in a single app, inject CSS scoped the same way:
+
+<!-- wrap -->
+```d
+st.html(`<style>:root[data-design="terminal"] .heading h1 { letter-spacing: .2em; }</style>`);
+```
