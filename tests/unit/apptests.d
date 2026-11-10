@@ -570,3 +570,33 @@ unittest
 	foreach (x; at.messages("set_theme"))
 		assert(x["allowSwitch"].get!bool, x.toString);
 }
+
+unittest
+{
+	// favicon: emoji/URL pass through, local files and bytes become app-served media
+	import std.file : tempDir, write, remove;
+	import std.path : buildPath;
+	auto png = buildPath(tempDir, "streamlitd-fav-test.png");
+	write(png, cast(const(ubyte)[]) [0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0]);
+	scope (exit) remove(png);
+	string which = "emoji";
+	auto at = new AppTest((St st) {
+		final switch (which)
+		{
+			case "emoji": st.setPageConfig(title: "t", icon: "📊"); break;
+			case "url": st.setPageConfig(icon: "https://example.com/i.png"); break;
+			case "file": st.setPageConfig(icon: png); break;
+			case "bytes": st.setFavicon(cast(const(ubyte)[]) `<svg xmlns="http://www.w3.org/2000/svg"/>`, "image/svg+xml"); break;
+		}
+	}).run();
+	assert(at.messages("page_config")[0]["icon"].get!string == "📊");
+	which = "url";
+	at.run();
+	assert(at.messages("page_config")[0]["icon"].get!string == "https://example.com/i.png");
+	which = "file";
+	at.run();
+	assert(at.messages("page_config")[0]["icon"].get!string.startsWith("_media/"));
+	which = "bytes";
+	at.run();
+	assert(at.messages("page_config")[0]["icon"].get!string.startsWith("_media/"));
+}

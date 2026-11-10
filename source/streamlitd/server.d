@@ -44,6 +44,38 @@ private string assetContent(string name)
 enum maxClientMessage = 16 * 1024 * 1024;
 
 private AuthConfig g_auth;
+// app-wide favicon from --favicon / [server] favicon (empty = embedded default icons)
+private immutable(ubyte)[] g_favicon;
+private string g_faviconMime;
+
+/// Load the configured favicon file; throws if it cannot be read.
+void loadFavicon(string path, out immutable(ubyte)[] data, out string mime)
+{
+	import std.file : exists, read, isFile;
+	import std.exception : enforce;
+	enforce(exists(path) && isFile(path), "favicon file not found: " ~ path);
+	data = cast(immutable(ubyte)[]) read(path);
+	mime = mimeFromName(path);
+	if (mime == "application/octet-stream")
+		mime = mimeFromBytes(data);
+	enforce(mime.length > 6 && mime[0 .. 6] == "image/", "favicon must be an image (svg, png, ico, jpg, gif, webp): " ~ path);
+}
+
+private void serveFavicon(HTTPServerRequest req, HTTPServerResponse res)
+{
+	import std.algorithm : endsWith;
+	res.headers["Cache-Control"] = "public, max-age=86400";
+	if (g_favicon.length)
+	{
+		res.writeBody(g_favicon, g_faviconMime);
+		return;
+	}
+	auto p = req.requestPath.toString();
+	string name = p.endsWith(".svg") ? "favicon.svg" : p.endsWith("favicon-32.png") ? "favicon-32.png"
+		: p.endsWith("apple-touch-icon.png") ? "apple-touch-icon.png" : "favicon.ico";
+	auto mime = name.endsWith(".svg") ? "image/svg+xml" : name.endsWith(".png") ? "image/png" : "image/x-icon";
+	res.writeBody(cast(const(ubyte)[]) assetContent(name), mime);
+}
 private AppFn g_app;
 private ServerOptions g_opts;
 private AppSession[string] g_sessions;
@@ -285,6 +317,14 @@ private void serveIndex(HTTPServerRequest req, HTTPServerResponse res)
 	res.headers["Cache-Control"] = "no-cache";
 	auto html = assetContent("index.html").replace("<head>", `<head>
 <base href="` ~ htmlEscapeAttr(g_opts.baseUrlPath) ~ `/">`);
+	if (g_favicon.length)
+	{
+		// one icon link for the custom file (avoid mixing it with the default SVG/PNG pair)
+		html = html.replace(`<link rel="icon" type="image/svg+xml" href="_stcore/favicon.svg" data-default-icon>`,
+			`<link rel="icon" type="` ~ g_faviconMime ~ `" href="_stcore/favicon" data-default-icon>`)
+			.replace(`<link rel="icon" sizes="32x32" type="image/png" href="_stcore/favicon-32.png" data-default-icon>`, "")
+			.replace(`<link rel="apple-touch-icon" href="_stcore/apple-touch-icon.png">`, `<link rel="apple-touch-icon" href="_stcore/favicon">`);
+	}
 	res.writeBody(html, "text/html; charset=UTF-8");
 }
 
@@ -391,6 +431,16 @@ int serve(AppFn app, ServerOptions opts = ServerOptions.init)
 	opts.baseUrlPath = normalizeBasePath(opts.baseUrlPath);
 	g_opts = opts;
 	g_wsHandler = handleWebSockets(&handleWS);
+	if (opts.favicon.length)
+	{
+		try
+			loadFavicon(opts.favicon, g_favicon, g_faviconMime);
+		catch (Exception e)
+		{
+			stderr.writeln("streamlitd: ", e.msg);
+			return 1;
+		}
+	}
 	{
 		import streamlitd.secrets : secrets;
 		try
@@ -411,6 +461,8 @@ int serve(AppFn app, ServerOptions opts = ServerOptions.init)
 
 	auto router = new URLRouter(opts.baseUrlPath);
 	router.get("/_stcore/health", (HTTPServerRequest req, HTTPServerResponse res) { res.writeBody("ok"); });
+	foreach (f; ["/_stcore/favicon", "/_stcore/favicon.svg", "/_stcore/favicon-32.png", "/_stcore/apple-touch-icon.png", "/favicon.ico"])
+		router.get(f, &serveFavicon);
 	router.get("/_stcore/ws", &handleWSRequest);
 	router.get("/static/*", &serveAsset);
 	router.get("/_media/:id", &serveMedia);
@@ -426,7 +478,16 @@ int serve(AppFn app, ServerOptions opts = ServerOptions.init)
 	settings.maxRequestSize = opts.maxUploadMB * 1024 * 1024 + 4096;
 	settings.webSocketPingInterval = seconds(20);
 	settings.accessLogger = null;
-	auto listener = listenHTTP(settings, router);
+	// browsers ask for /favicon.ico at the server root even when the app lives under a base path
+	HTTPServerRequestHandler handler = router;
+	if (opts.baseUrlPath.length)
+	{
+		auto outer = new URLRouter;
+		outer.get("/favicon.ico", &serveFavicon);
+		outer.any("*", router);
+		handler = outer;
+	}
+	auto listener = listenHTTP(settings, handler);
 	scope (exit) listener.stopListening();
 
 	if (!opts.quiet)
@@ -525,6 +586,7 @@ ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction 
 		"no-theme-switch", "Hide the viewer's appearance menu", &noSwitch,
 		"hash-password", "Read a password from stdin and print its hash for secrets.toml", &hashPassword,
 		"auth-required", "Require login for the whole app ([auth] must be configured)", &o.authRequired,
+		"favicon", "Favicon image file (svg, png, ico, ...) for every page", &o.favicon,
 		"quiet|q", "Do not print the startup banner", &o.quiet);
 	if (help.helpWanted)
 	{
@@ -538,6 +600,12 @@ ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction 
 	action = hashPassword ? ArgsAction.hashPassword : ArgsAction.serve;
 	if (noSwitch)
 		o.allowThemeSwitch = false;
+	if (o.favicon.length && action == ArgsAction.serve)
+	{
+		immutable(ubyte)[] data;
+		string mime;
+		loadFavicon(o.favicon, data, mime); // fail at startup, not on the first request
+	}
 	validateTheme(o.theme);
 	return o;
 }
@@ -559,6 +627,19 @@ unittest
 	assert(o.theme.design == "glass");
 	assertThrown(parseServerArgs(["app", "--design", "nope"], null, act, helpText, false));
 	assertThrown(parseServerArgs(["app", "--color-scheme", "nope"], null, act, helpText, false));
+	// --favicon must point to a readable image
+	import std.file : tempDir, write, remove;
+	import std.path : buildPath;
+	auto ico = buildPath(tempDir, "streamlitd-test-icon.svg");
+	write(ico, `<svg xmlns="http://www.w3.org/2000/svg"/>`);
+	scope (exit) remove(ico);
+	o = parseServerArgs(["app", "--favicon", ico], null, act, helpText, false);
+	assert(o.favicon == ico);
+	assertThrown(parseServerArgs(["app", "--favicon", ico ~ ".missing"], null, act, helpText, false));
+	immutable(ubyte)[] data;
+	string mime;
+	loadFavicon(ico, data, mime);
+	assert(mime == "image/svg+xml" && data.length > 10);
 	parseServerArgs(["app", "--help"], null, act, helpText, false);
 	assert(act == ArgsAction.help && helpText.canFind("--design") && helpText.canFind("terminal"));
 }

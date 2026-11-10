@@ -210,7 +210,27 @@ st.setPageConfig(title: "Sales", icon: "📈", layout: Layout.wide,
     initialSidebarState: "expanded", theme: "ocean");
 ```
 
-`icon` can be an emoji or an image URL. The wide layout uses the full browser width.
+`icon` sets the browser-tab favicon. It can be an emoji (`"📈"`), an `http(s)://` or `data:` URL, or a
+**local image file** such as `"assets/logo.png"`; streamlitd serves the file itself. The wide layout uses the full browser width.
+
+## Favicon
+
+![the default streamlitd favicon](images/favicon.png)
+
+Which icon a page shows, from highest priority to lowest:
+
+1. **The app sets it in a run**: `st.setPageConfig(icon: ...)` or `st.setFavicon(...)`.
+2. **The current page's icon** in a multipage app (`Page(&fn, "Reports", "📊")`), when the app sets none.
+3. **The app-wide favicon** from `[server] favicon = "logo.svg"`, `--favicon logo.svg` or
+   `STREAMLITD_SERVER_FAVICON`. It is also served at `/favicon.ico`.
+4. **streamlitd's own icon** (above), shipped as SVG, PNG, Apple touch icon and `.ico`.
+
+<!-- wrap -->
+```d
+st.setFavicon("🚀");                                    // emoji
+st.setFavicon("https://dlang.org/favicon.ico");         // URL
+st.setFavicon(cast(const(ubyte)[]) `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5" fill="teal"/></svg>`, "image/svg+xml");
+```
 
 ## Logo
 

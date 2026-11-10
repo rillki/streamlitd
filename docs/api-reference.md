@@ -563,6 +563,16 @@ void image(string pathOrUrl, string caption = null, int width = 0, bool useConta
 `st.image` from a file path or an http(s)/data URL.
 
 ```d
+void setFavicon(string emojiUrlOrPath)
+```
+The page favicon: an emoji, an http(s)/data URL, or a local image file (served from the app). Same as `st.setPageConfig(icon: ...)`.
+
+```d
+void setFavicon(const(ubyte)[] data, string mime = null)
+```
+ditto, from image bytes (png, svg, ico, ...).
+
+```d
 void logo(string pathOrUrl, string link = null, string size = "medium")
 ```
 `st.logo`: an image shown at the top of the sidebar, or in the top-left corner of the page while the sidebar is hidden (no sidebar content) or collapsed.
@@ -755,7 +765,7 @@ Sleep without blocking other sessions (yields to the event loop).
 ```d
 void setPageConfig(string title = null, string icon = null, Layout layout = Layout.centered, string initialSidebarState = "auto", string theme = null, bool allowThemeSwitch = true, string colorScheme = null, string design = null)
 ```
-Configure the page (`st.set_page_config`). `colorScheme` (alias `theme`) and `design` select the color scheme and design style (see `colorSchemeNames`, `designNames`); `allowThemeSwitch: false` hides the viewer's appearance menu.
+Configure the page (`st.set_page_config`). `icon` is the browser-tab favicon: an emoji, an http(s)/data URL, or a local image file. `colorScheme` (alias `theme`) and `design` select the color scheme and design style (see `colorSchemeNames`, `designNames`); `allowThemeSwitch: false` hides the viewer's appearance menu.
 
 ```d
 void setTheme(string scheme = null, string mode = null, string design = null)

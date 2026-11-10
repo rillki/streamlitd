@@ -128,6 +128,7 @@ updating files there, run `python3 tools/gen_assets.py`.
 |---|---|
 | `run-tests.sh` | unit tests, e2e tests and doc snippet compilation |
 | `tools/gen_assets.py` | regenerate the embedded asset list |
+| `tools/gen_favicon.js` + `tools/gen_favicon.py` | render `assets/favicon.svg` to the PNG / Apple touch / `.ico` favicons |
 | `tools/gen_api_docs.py` | regenerate `docs/api-reference.md` |
 | `tools/check_doc_snippets.py` | compile every D snippet in `docs/` and check links |
 | `tests/e2e/screenshots.js` + `tools/optimize_images.py` | regenerate `docs/images/` |

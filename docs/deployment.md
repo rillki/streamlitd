@@ -150,6 +150,8 @@ allowedOrigins = ["https://apps.example.com"]
 
 ## 5. Health checks and monitoring
 
+- `GET <base>/favicon.ico` (and `/favicon.ico` at the server root) serves the app-wide favicon,
+  or streamlitd's default icon. Configure it with `[server] favicon` / `--favicon`.
 - `GET <base>/_stcore/health` returns `ok` with HTTP 200. Use it for load balancer and
   Kubernetes probes. It does not require login.
 - Errors from app code are shown to the user and are not logged. Wrap sensitive sections with

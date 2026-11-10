@@ -46,7 +46,7 @@ void settings(St st)
 
 void app(St st)
 {
-	st.setPageConfig(title: "Multipage demo", icon: "📚");
+	st.setPageConfig(title: "Multipage demo"); // no icon: the tab shows the current page's icon
 	auto page = st.navigation([
 		Page(&home, "Home", "🏠"),
 		Page(&chat, "Chat", "💬"),

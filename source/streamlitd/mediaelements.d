@@ -50,6 +50,32 @@ mixin template MediaElements()
 		emit(jo("kind", "image", "src", src, "caption", caption, "width", width, "fullWidth", useContainerWidth));
 	}
 
+	/// The page favicon: an emoji, an http(s)/data URL, or a local image file (served from the app).
+	/// Same as `st.setPageConfig(icon: ...)`.
+	void setFavicon(string emojiUrlOrPath)
+	{
+		sess.send(jo("type", "page_config", "icon", faviconSrc(emojiUrlOrPath)));
+	}
+
+	/// ditto, from image bytes (png, svg, ico, ...).
+	void setFavicon(const(ubyte)[] data, string mime = null)
+	{
+		sess.send(jo("type", "page_config", "icon", registerMedia(data, mime.length ? mime : mimeFromBytes(data))));
+	}
+
+	/// Resolve a page icon: local image files become app-served media URLs; emoji and URLs pass through.
+	package string faviconSrc(string icon)
+	{
+		import std.file : exists, isFile;
+		if (icon is null || icon.length == 0 || icon.startsWith("http://") || icon.startsWith("https://") || icon.startsWith("data:"))
+			return icon;
+		bool file; // an existing file (absolute or relative path) is served by the app
+		try
+			file = icon.length < 4096 && exists(icon) && isFile(icon);
+		catch (Exception) {}
+		return file ? mediaSrc(icon) : icon; // otherwise an emoji or a server-relative URL
+	}
+
 	/// `st.logo`: an image shown at the top of the sidebar, or in the top-left corner of the page
 	/// while the sidebar is hidden (no sidebar content) or collapsed.
 	void logo(string pathOrUrl, string link = null, string size = "medium")

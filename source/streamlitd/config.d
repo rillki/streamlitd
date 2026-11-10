@@ -35,6 +35,8 @@ struct ServerOptions
 	Theme theme;
 	/// Let viewers change style/mode from the settings menu (CLI: `--no-theme-switch`).
 	bool allowThemeSwitch = true;
+	/// App-wide favicon: path to an image file (svg, png, ico, ...). Empty = streamlitd's icon.
+	string favicon;
 	/// Tile URL template for `st.map` (`[map] tileUrl`), e.g. an internal tile server for offline use.
 	string mapTileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 	/// Attribution HTML shown on maps (`[map] attribution`).
@@ -87,6 +89,7 @@ string[] applyConfig(ref ServerOptions o, Json cfg)
 				case "maxSessions": o.maxSessions = v.to!size_t; break;
 				case "idleTimeout": o.idleTimeoutSeconds = v.to!uint; break;
 				case "headless": o.quiet = v.get!bool; break;
+				case "favicon": o.favicon = v.get!string; break;
 				case "allowedOrigins":
 					o.allowedOrigins = null;
 					foreach (e; v)
@@ -164,7 +167,7 @@ void applyEnv(ref ServerOptions o, string[string] env)
 	cfg["server"] = Json.emptyObject;
 	cfg["theme"] = Json.emptyObject;
 	static immutable serverKeys = ["port", "address", "maxUploadSize", "scriptThreads", "baseUrlPath",
-		"maxSessions", "idleTimeout", "headless"];
+		"maxSessions", "idleTimeout", "headless", "favicon"];
 	static immutable themeKeys = ["scheme", "preset", "design", "mode", "base", "primaryColor", "backgroundColor",
 		"secondaryBackgroundColor", "textColor", "font", "headingFont", "codeFont", "baseRadius"];
 	foreach (k; serverKeys)

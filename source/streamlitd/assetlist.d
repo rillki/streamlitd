@@ -4,7 +4,11 @@ module streamlitd.assetlist;
 /// Embedded asset paths (relative to assets/).
 enum assetNames = [
 	"app.js",
+	"apple-touch-icon.png",
 	"designs.css",
+	"favicon-32.png",
+	"favicon.ico",
+	"favicon.svg",
 	"index.html",
 	"style.css",
 	"ui.js",

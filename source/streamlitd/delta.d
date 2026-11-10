@@ -268,14 +268,15 @@ final class St
 		sess.checkInterrupt();
 	}
 
-	/// Configure the page (`st.set_page_config`). `colorScheme` (alias `theme`) and `design`
+	/// Configure the page (`st.set_page_config`). `icon` is the browser-tab favicon: an emoji, an
+	/// http(s)/data URL, or a local image file. `colorScheme` (alias `theme`) and `design`
 	/// select the color scheme and design style (see `colorSchemeNames`, `designNames`);
 	/// `allowThemeSwitch: false` hides the viewer's appearance menu.
 	void setPageConfig(string title = null, string icon = null, Layout layout = Layout.centered,
 		string initialSidebarState = "auto", string theme = null, bool allowThemeSwitch = true,
 		string colorScheme = null, string design = null)
 	{
-		sess.send(jo("type", "page_config", "title", title, "icon", icon,
+		sess.send(jo("type", "page_config", "title", title, "icon", faviconSrc(icon),
 			"layout", layout == Layout.wide ? "wide" : "centered", "sidebarState", initialSidebarState));
 		if (theme !is null || colorScheme !is null || design !is null || !allowThemeSwitch)
 		{

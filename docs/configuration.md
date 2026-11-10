@@ -25,6 +25,7 @@ scriptThreads = -1           # --script-threads: -1 = one per CPU core, 0 = sing
 maxSessions = 0              # --max-sessions (0 = unlimited); extra connections get HTTP 503
 idleTimeout = 0              # --idle-timeout (seconds without client activity; 0 = never; see below)
 headless = false             # true = no startup banner (--quiet)
+favicon = ""                 # --favicon: app-wide favicon image (svg, png, ico, jpg, gif, webp); default: the streamlitd icon
 allowedOrigins = []          # --allowed-origin: extra Origins allowed to open the WebSocket / upload ("*" = any)
 
 [theme]
@@ -62,6 +63,7 @@ warning at startup. An existing `.streamlit/config.toml` can stay as it is.
 | `STREAMLITD_SERVER_MAXSESSIONS` | `[server] maxSessions` |
 | `STREAMLITD_SERVER_IDLETIMEOUT` | `[server] idleTimeout` |
 | `STREAMLITD_SERVER_HEADLESS` | `[server] headless` |
+| `STREAMLITD_SERVER_FAVICON` | `[server] favicon` |
 | `STREAMLITD_THEME_DESIGN`, `_SCHEME` (or `_PRESET`), `_MODE`, `_BASE` | `[theme] design`, `scheme`, `mode`, `base` |
 | `STREAMLITD_THEME_PRIMARYCOLOR`, `_BACKGROUNDCOLOR`, `_SECONDARYBACKGROUNDCOLOR`, `_TEXTCOLOR`, `_FONT`, `_HEADINGFONT`, `_CODEFONT`, `_BASERADIUS` | the theme tokens |
 
@@ -87,6 +89,7 @@ warning at startup. An existing `.streamlit/config.toml` can stay as it is.
 | `--theme.<key>=<value>` | | any theme token, e.g. `--theme.primaryColor=#123456` |
 | `--no-theme-switch` | | hide the viewer style menu |
 | `--auth-required` | | require login for the whole app |
+| `--favicon <file>` | streamlitd icon | favicon image for every page (svg, png, ico, …) |
 | `--hash-password` | | read a password from stdin, print its hash for `secrets.toml`, exit |
 | `--quiet`, `-q` | | no startup banner |
 

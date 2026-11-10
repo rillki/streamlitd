@@ -4,6 +4,7 @@ baseUrlPath = "/app"
 maxUploadSize = 50
 scriptThreads = 4
 maxSessions = 100
+favicon = "logo.svg"            # app-wide favicon (default: the streamlitd icon)
 
 [theme]
 preset = "finance"

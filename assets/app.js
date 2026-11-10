@@ -255,13 +255,31 @@
     setRunning(true);
     S.fragmentRun = !!(msg && msg.fragment);
     S.fragmentNode = S.fragmentRun ? nodeAt(msg.path) : null;
-    if (!S.fragmentRun) S.navSeen = false;
+    if (!S.fragmentRun) { S.navSeen = false; S.iconSetThisRun = false; S.navIcon = null; }
     for (const r of runScopes()) forEachNode(r, (n) => { n.fresh = false; });
     clearTimeout(S.staleTimer);
     S.staleTimer = setTimeout(() => {
       if (!S.running) return;
       for (const r of runScopes()) forEachNode(r, (n) => { if (!n.fresh) n.wrap.classList.add("stale"); });
     }, 400);
+  }
+
+  // ---- favicon: app icon set this run > current page icon (multipage) > default / --favicon
+  const defaultIcons = Array.from(document.querySelectorAll("link[data-default-icon]")).map((l) => ({ el: l, href: l.getAttribute("href"), type: l.getAttribute("type") }));
+  function iconHref(icon) {
+    // an emoji becomes an SVG; URLs and app-served files (_media/..., paths) are used as they are
+    if (/^(https?:|data:|\/|_media\/)/.test(icon) || /\.(svg|png|ico|jpe?g|gif|webp)(\?.*)?$/i.test(icon)) return icon;
+    return "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">' + esc(icon) + "</text></svg>");
+  }
+  function setFavicon(icon) {
+    const href = icon ? iconHref(icon) : null;
+    if (S.faviconHref === href) return;
+    S.faviconHref = href;
+    defaultIcons.forEach((d) => {
+      if (href) { d.el.setAttribute("href", href); d.el.removeAttribute("type"); }
+      else { d.el.setAttribute("href", d.href); if (d.type) d.el.setAttribute("type", d.type); }
+    });
+    document.documentElement.dataset.favicon = icon ? "custom" : "default";
   }
 
   function onScriptFinished(status, msg) {
@@ -272,6 +290,7 @@
       if (!S.fragmentRun && !S.navSeen) { S.navVisible = false; $("#stNav").innerHTML = ""; }
     }
     for (const r of runScopes()) forEachNode(r, (n) => n.wrap.classList.remove("stale"));
+    if (!S.fragmentRun && status !== "rerun" && !S.iconSetThisRun) setFavicon(S.navIcon || null);
     S.fragmentNode = null;
     S.fragmentRun = false;
     updateSidebarVisibility();
@@ -1820,11 +1839,7 @@
 
   function applyPageConfig(m) {
     if (m.title) { document.title = m.title; S.pageConfig.title = m.title; $("#stRoot-0").dataset.title = m.title; }
-    if (m.icon) {
-      let link = document.querySelector("link[rel=icon]");
-      const isUrl = /^(https?:|data:|\/)/.test(m.icon);
-      link.href = isUrl ? m.icon : "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">' + esc(m.icon) + "</text></svg>");
-    }
+    if (m.icon) { setFavicon(m.icon); S.iconSetThisRun = true; }
     const app = document.getElementById("stApp");
     app.classList.toggle("layout-wide", m.layout === "wide");
     app.classList.toggle("layout-centered", m.layout !== "wide");
@@ -1836,6 +1851,8 @@
 
   function renderNav(m) {
     S.navSeen = true;
+    const cur = (m.pages || []).find((p) => p.urlPath === m.current);
+    S.navIcon = cur && cur.icon ? cur.icon : null;
     const nav = $("#stNav");
     nav.innerHTML = "";
     S.navVisible = m.position !== "hidden";

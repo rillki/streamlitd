@@ -71,6 +71,8 @@ win95, XP, brutalist, material and glass, each usable with any color scheme:
 - **Auth:** password users (PBKDF2) and OIDC (Google, Entra ID, Keycloak, …), `st.user`.
 - **Custom components** compatible with Streamlit's component protocol.
 - **Testing:** headless `AppTest` for unit tests; Playwright end-to-end tests.
+- **Branding:** streamlitd's own favicon by default; set yours per app (`[server] favicon`, `--favicon`) or
+  per page (`st.setPageConfig(icon:)` with an emoji, URL or image file; multipage apps show the page icon).
 
 ## Documentation
 
