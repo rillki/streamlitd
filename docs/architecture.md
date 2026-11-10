@@ -14,7 +14,7 @@
 | Module | Role |
 |---|---|
 | `package.d` | public imports, `StreamlitMain` mixin |
-| `server.d` | HTTP routes, WebSocket handling, static assets, uploads, media, origin checks, CLI (`runMain`) |
+| `server.d` | HTTP routes, WebSocket handling, static assets, uploads, media, origin checks, CLI (`runMain`), app routes (`RoutesFn`, `apiUser`/`requireUser`) |
 | `config.d`, `toml.d`, `secrets.d` | configuration files, the TOML parser, `st.secrets` |
 | `session.d` | `AppSession`: widget values, session state, pending events, full and fragment runs, interruption |
 | `executor.d` | runs sessions on vibe.d worker threads; the thread-safe outbox transport |
@@ -26,7 +26,8 @@
 | `theme.d` | design styles (`DesignStyle`), color schemes, `Theme`, `ThemeTokens` |
 | `auth.d`, `authserver.d` | PBKDF2, signed cookies; login routes and OIDC |
 | `testing.d` | `AppTest` |
-| `assetlist.d` | generated list of embedded assets (`tools/gen_assets.py`) |
+| `assetlist.d` | generated list of embedded assets (`tools/gen_assets.py`); Swagger UI has its own list, `swaggerAssetNames` |
+| `openapi.d` | `registerApi`, OpenAPI 3.0 generation from REST interfaces (compile-time schemas), Swagger UI page; compiled out with the version `StreamlitdNoApiDocs` |
 
 ## Protocol
 
@@ -117,8 +118,9 @@ on the server, so a tampered value falls back to the default.
 
 ## Vendored libraries
 
-marked, Vega/Vega-Lite/Vega-Embed, Plotly.js, KaTeX, Leaflet and highlight.js live in
-`assets/vendor/`. Their licenses are listed in
+marked, Vega/Vega-Lite/Vega-Embed, Plotly.js, KaTeX, Leaflet, highlight.js and Swagger UI live in
+`assets/vendor/`. Swagger UI (`vendor/swagger-ui/`) is embedded only when the API docs are compiled
+in, so `gen_assets.py` keeps it in a separate list. Their licenses are listed in
 [`assets/vendor/licenses/README.md`](../assets/vendor/licenses/README.md). After adding or
 updating files there, run `python3 tools/gen_assets.py`.
 

@@ -1,0 +1,6 @@
+# Serve the OpenAPI document (/openapi.json) and Swagger UI (/docs) for this app's API.
+# Off by default; also STREAMLITD_API_DOCS=true or --api-docs.
+[api]
+docs = true
+title = "Todos API"
+version = "1.0.0"

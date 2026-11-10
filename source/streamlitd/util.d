@@ -157,3 +157,10 @@ unittest
 	assert(pathKey([0, 1, 2]) == "0.1.2");
 	assert(mimeFromName("a.PNG") == "image/png");
 }
+
+/// Escape text for an HTML attribute value or element content.
+string htmlEscapeAttr(string s) @safe pure
+{
+	import std.array : replace;
+	return s.replace("&", "&amp;").replace(`"`, "&quot;").replace("<", "&lt;").replace(">", "&gt;");
+}

@@ -66,7 +66,9 @@ Run the tests with `dub test --compiler=ldc2`.
 ## End-to-end tests (Playwright)
 
 The repository's `tests/e2e` folder shows the setup. `playwright.config.js` builds and starts
-each example app on its own port, and the specs drive a real browser:
+each example app on its own port (ports 8701 to 8711; the `api` example also runs a second time under the
+base path `/sub` on 8712, with `--api-docs=false`), and the specs drive a real browser. API specs use Playwright's `request` fixture
+for plain HTTP calls:
 
 ```js
 const { test, expect } = require("@playwright/test");

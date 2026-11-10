@@ -123,6 +123,10 @@ st.write("Welcome back,", st.user.name);
 
 `st.login()` and `st.logout()` raise an error if `[auth]` is not configured.
 
+The same login protects the app's own [JSON API endpoints](api-endpoints.md#login-and-access-control):
+with `required = true` they answer 401 without a login, `requireUser(req, res)` returns the user, and
+data-changing requests with the login cookie must come from an allowed origin.
+
 ## Settings
 
 | Key | Default | Meaning |

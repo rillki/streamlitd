@@ -364,23 +364,25 @@ final class St
 	mixin ComponentElements;
 }
 
+package UserInfo makeUserInfo(Json data) { return UserInfo(data); }
+
 /// The logged-in user (`st.user`).
 struct UserInfo
 {
 	private Json data;
 
 	/// True when a user is logged in.
-	@property bool isLoggedIn() const { return data.type == Json.Type.object; }
+	@property bool isLoggedIn() const @trusted { return data.type == Json.Type.object; }
 	/// Display name.
-	@property string name() const { return isLoggedIn ? data["name"].opt!string(null) : null; }
+	@property string name() const @trusted { return isLoggedIn ? data["name"].opt!string(null) : null; }
 	/// E-mail address (if the provider shares it).
-	@property string email() const { return isLoggedIn ? data["email"].opt!string(null) : null; }
+	@property string email() const @trusted { return isLoggedIn ? data["email"].opt!string(null) : null; }
 	/// Stable subject id from the provider (username for password logins).
-	@property string sub() const { return isLoggedIn ? data["sub"].opt!string(null) : null; }
+	@property string sub() const @trusted { return isLoggedIn ? data["sub"].opt!string(null) : null; }
 	/// "password" or the OIDC provider name.
-	@property string provider() const { return isLoggedIn ? data["provider"].opt!string(null) : null; }
+	@property string provider() const @trusted { return isLoggedIn ? data["provider"].opt!string(null) : null; }
 	/// All stored claims.
-	@property Json claims() const { return isLoggedIn ? data.clone : Json(null); }
+	@property Json claims() const @trusted { return isLoggedIn ? data.clone : Json(null); }
 }
 
 /// Access to the browser's URL query string.

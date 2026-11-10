@@ -42,6 +42,13 @@ attribution = "&copy; OpenStreetMap contributors"
 
 [auth]                       # usually kept in secrets.toml, see authentication.md
 required = false             # --auth-required
+
+[api]                        # OpenAPI + Swagger UI for the app's API, see api-endpoints.md
+docs = false                 # --api-docs: serve them (off by default)
+docsPath = "/docs"           # Swagger UI, under the base path (plain path, not under /_stcore, /static, /auth, ...)
+specPath = "/openapi.json"   # the OpenAPI 3.0 document, under the base path (must differ from docsPath)
+title = "streamlitd API"     # info.title
+version = "1.0.0"            # info.version
 ```
 
 `idleTimeout` frees the memory of abandoned tabs. If the tab is still open, the browser then
@@ -64,6 +71,8 @@ warning at startup. An existing `.streamlit/config.toml` can stay as it is.
 | `STREAMLITD_SERVER_IDLETIMEOUT` | `[server] idleTimeout` |
 | `STREAMLITD_SERVER_HEADLESS` | `[server] headless` |
 | `STREAMLITD_SERVER_FAVICON` | `[server] favicon` |
+| `STREAMLITD_API_DOCS` (`true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`) | `[api] docs` |
+| `STREAMLITD_API_DOCSPATH`, `_SPECPATH`, `_TITLE`, `_VERSION` | `[api] docsPath`, `specPath`, `title`, `version` |
 | `STREAMLITD_THEME_DESIGN`, `_SCHEME` (or `_PRESET`), `_MODE`, `_BASE` | `[theme] design`, `scheme`, `mode`, `base` |
 | `STREAMLITD_THEME_PRIMARYCOLOR`, `_BACKGROUNDCOLOR`, `_SECONDARYBACKGROUNDCOLOR`, `_TEXTCOLOR`, `_FONT`, `_HEADINGFONT`, `_CODEFONT`, `_BASERADIUS` | the theme tokens |
 
@@ -90,8 +99,21 @@ warning at startup. An existing `.streamlit/config.toml` can stay as it is.
 | `--no-theme-switch` | | hide the viewer style menu |
 | `--auth-required` | | require login for the whole app |
 | `--favicon <file>` | streamlitd icon | favicon image for every page (svg, png, ico, …) |
+| `--api-docs`, `--api-docs=false` | off | serve the OpenAPI document and Swagger UI ([API endpoints](api-endpoints.md#openapi-and-swagger-ui)) |
 | `--hash-password` | | read a password from stdin, print its hash for `secrets.toml`, exit |
 | `--quiet`, `-q` | | no startup banner |
+
+## Build-time switches (dub versions)
+
+Set in the app's `dub.json` (they also apply to the streamlitd library it depends on):
+
+| Version | Effect |
+|---|---|
+| `StreamlitdNoApiDocs` | leaves the OpenAPI generator and Swagger UI out of the binary (about 1.7 MB); `[api] docs` then only prints a warning |
+
+```json
+"versions": ["StreamlitdNoApiDocs"]
+```
 
 ## Secrets: `secrets.toml`
 
@@ -144,6 +166,9 @@ int main()
     return serve(toDelegate(&app), o);
 }
 ```
+
+Pass your own routes as the third argument, `serve(toDelegate(&app), o, toDelegate(&routes))`
+(see [JSON API endpoints](api-endpoints.md)).
 
 `runMain(toDelegate(&app), args)` is what the mixin calls: config files, environment, CLI, then
 `serve`.

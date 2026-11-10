@@ -24,6 +24,8 @@ SECTIONS = [
     ("Secrets", "secrets.d", "", None),
     ("Themes", "theme.d", "", None),
     ("Server & configuration", "config.d", "", None),
+    ("Server, app routes & JSON API endpoints", "server.d", "See [JSON API endpoints](api-endpoints.md).", None),
+    ("OpenAPI & Swagger UI", "openapi.d", "See [OpenAPI and Swagger UI](api-endpoints.md#openapi-and-swagger-ui).", None),
     ("Testing (`AppTest`)", "testing.d", "", None),
 ]
 

@@ -1,0 +1,9 @@
+{
+	"name": "no-api-docs",
+	"description": "Build check: the dub version StreamlitdNoApiDocs removes the OpenAPI generator and Swagger UI",
+	"targetType": "executable",
+	"dependencies": { "streamlitd": { "path": "../.." } },
+	"versions": ["StreamlitdNoApiDocs"],
+	"sourcePaths": ["."],
+	"importPaths": ["."]
+}

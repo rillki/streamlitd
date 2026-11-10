@@ -39,6 +39,8 @@ enum assetNames = [
 	"vendor/leaflet/leaflet.css",
 	"vendor/leaflet/leaflet.js",
 	"vendor/licenses/plotly-LICENSE",
+	"vendor/licenses/swagger-ui-LICENSE",
+	"vendor/licenses/swagger-ui-NOTICE",
 	"vendor/licenses/vega-LICENSE",
 	"vendor/licenses/vega-embed-LICENSE",
 	"vendor/licenses/vega-lite-LICENSE",
@@ -47,4 +49,10 @@ enum assetNames = [
 	"vendor/vega-embed.min.js",
 	"vendor/vega-lite.min.js",
 	"vendor/vega.min.js",
+];
+
+/// Swagger UI files, embedded only with the OpenAPI docs (see streamlitd.openapi).
+enum swaggerAssetNames = [
+	"vendor/swagger-ui/swagger-ui-bundle.js",
+	"vendor/swagger-ui/swagger-ui.css",
 ];

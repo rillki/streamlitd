@@ -2,7 +2,7 @@
 """Compile the D code snippets in docs/*.md and check relative links/images in docs and README.
 
 Every ```d block must be preceded by one of these markers:
-  <!-- compile -->     a complete module (`mixin StreamlitMain!...` is stripped)
+  <!-- compile -->     a complete module (`mixin StreamlitMain!app;` / `!(app, routes);` is stripped)
   <!-- wrap -->        statements, wrapped into `void app(St st) { ... }`
   <!-- no-compile -->  an excerpt that depends on surrounding code
 docs/api-reference.md (generated signatures) is exempt.
@@ -47,7 +47,7 @@ def build(snippets):
     origin = {}
     for i, (where, kind, code, line) in enumerate(snippets):
         name = f"snip{i:03d}"
-        code = re.sub(r"^\s*mixin StreamlitMain!\w+;.*$", "", code, flags=re.M)
+        code = re.sub(r"^\s*mixin StreamlitMain!(\w+|\([^)]*\));.*$", "", code, flags=re.M)
         code = re.sub(r"^\s*int main\(\)", "int snippetMain()", code, flags=re.M)
         if kind == "wrap":
             body = "\n".join("\t" + l for l in code.split("\n"))

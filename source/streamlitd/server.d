@@ -22,6 +22,8 @@ import streamlitd.util;
 import streamlitd.theme;
 import streamlitd.executor;
 import streamlitd.authserver;
+import streamlitd.delta : UserInfo;
+import streamlitd.openapi;
 
 public import streamlitd.config : ServerOptions;
 import streamlitd.config;
@@ -300,11 +302,6 @@ private void serveAsset(HTTPServerRequest req, HTTPServerResponse res)
 	res.writeBody(content, mime);
 }
 
-private string htmlEscapeAttr(string s)
-{
-	import std.array : replace;
-	return s.replace("&", "&amp;").replace(`"`, "&quot;").replace("<", "&lt;").replace(">", "&gt;");
-}
 
 private void serveIndex(HTTPServerRequest req, HTTPServerResponse res)
 {
@@ -424,8 +421,156 @@ private void handleUpload(HTTPServerRequest req, HTTPServerResponse res)
 	res.writeJsonBody(jo("fileId", u.fileId, "name", u.name, "type", u.type, "size", u.size));
 }
 
+/// Registers your own HTTP routes (JSON APIs, webhooks, REST interfaces) on the app's server.
+/// See `StreamlitMain!(app, routes)` and docs/api-endpoints.md.
+alias RoutesFn = void delegate(URLRouter router);
+
+/// Path prefixes that belong to streamlitd and can't be used by your own routes.
+immutable string[] reservedRoutePrefixes = ["/_stcore", "/static", "/_media", "/_components", "/_upload", "/auth",
+	"/oauth2callback", "/favicon.ico"];
+
+/// The reserved prefix `path` falls under, or null.
+private string reservedPrefixOf(string path) @safe pure nothrow
+{
+	import std.algorithm : startsWith;
+	foreach (p; reservedRoutePrefixes)
+		if (path == p || path.startsWith(p ~ "/"))
+			return p;
+	return null;
+}
+
+/// Normalize and check `[api] docsPath` / `specPath` (from any source: config, env, CLI or code).
+package void checkApiDocsPaths(ref ApiDocsOptions a)
+{
+	a.docsPath = routePath(a.docsPath);
+	a.specPath = routePath(a.specPath);
+	if (a.docsPath == a.specPath)
+		throw new Exception("[api] docsPath and specPath must differ");
+	foreach (path; [a.docsPath, a.specPath])
+		if (auto p = reservedPrefixOf(path))
+			throw new Exception("[api] path " ~ path ~ " is under the reserved prefix " ~ p);
+}
+
+/// Throws if `pattern` (a route registered by the app) collides with streamlitd's own routes.
+/// `extra` adds exact reserved paths (the API docs paths when they are served).
+void checkUserRoute(string pattern, const string[] extra = null)
+{
+	import std.algorithm : startsWith, canFind;
+	if (extra.canFind(pattern))
+		throw new Exception("route " ~ pattern ~ " is used by the API docs ([api] docsPath / specPath)");
+	if (auto p = reservedPrefixOf(pattern))
+		throw new Exception("route " ~ pattern ~ " uses the reserved prefix " ~ p ~
+			"; reserved: " ~ reservedRoutePrefixes.join(", "));
+	if (pattern == "*" || pattern == "/*")
+		throw new Exception("route " ~ pattern ~ " would hide the app page; mount your API under a prefix such as /api/");
+}
+
+/// The logged-in streamlitd user for an API request (not logged in when auth is off).
+/// Usable as a vibe.d REST `@before!apiUser("user")` filter.
+UserInfo apiUser(HTTPServerRequest req, HTTPServerResponse res) @trusted
+{
+	import streamlitd.delta : makeUserInfo;
+	return makeUserInfo(userFromRequest(g_auth, req));
+}
+
+/// Like `apiUser`, but answers 401 when nobody is logged in.
+/// Usable as a vibe.d REST `@before!requireUser("user")` filter.
+UserInfo requireUser(HTTPServerRequest req, HTTPServerResponse res) @trusted
+{
+	import vibe.http.common : HTTPStatusException;
+	auto u = apiUser(req, res);
+	if (!u.isLoggedIn)
+		throw new HTTPStatusException(401, "login required");
+	return u;
+}
+
+/// Copies the app's routes onto `main`. With `[auth] required`, they answer 401 to anonymous requests.
+/// Returns the mounted routes (for the OpenAPI document).
+private AppRoute[] mountUserRoutes(URLRouter main, RoutesFn routes, const string[] reserved = null)
+{
+	static if (apiDocsCompiledIn)
+		resetApiRegistry(); // registerApi records into it while `routes` runs
+	auto r = new URLRouter;
+	routes(r);
+	AppRoute[] mounted;
+	foreach (rt; r.getAllRoutes())
+	{
+		checkUserRoute(rt.pattern, reserved);
+		main.match(rt.method, rt.pattern, guardedRoute(rt.cb));
+		mounted ~= AppRoute(rt.method, rt.pattern);
+	}
+	return mounted;
+}
+
+/// Serve the OpenAPI document, Swagger UI and its files (when `[api] docs` is on and compiled in).
+private void registerApiDocs(URLRouter router, string spec)
+{
+	static if (apiDocsCompiledIn)
+	{
+		router.get(g_opts.api.specPath, guardedRoute((HTTPServerRequest req, HTTPServerResponse res) @safe {
+			res.headers["Cache-Control"] = "no-cache";
+			res.writeBody(spec, "application/json; charset=UTF-8");
+		}));
+		router.get(g_opts.api.docsPath, (HTTPServerRequest req, HTTPServerResponse res) @trusted {
+			if (g_auth.required && userFromRequest(g_auth, req).type == Json.Type.null_)
+				return res.redirect(g_opts.baseUrlPath ~ "/auth/login");
+			res.headers["Cache-Control"] = "no-cache";
+			res.writeBody(swaggerPage(g_opts.api.title, g_opts.baseUrlPath, g_opts.api.specPath), "text/html; charset=UTF-8");
+		});
+		router.get("/_stcore/swagger/:file", (HTTPServerRequest req, HTTPServerResponse res) @trusted {
+			import std.algorithm : endsWith;
+			auto file = req.params["file"];
+			auto content = swaggerAsset(file);
+			if (content is null)
+			{
+				res.statusCode = 404;
+				return res.writeBody("not found");
+			}
+			res.headers["Cache-Control"] = "public, max-age=86400";
+			res.writeBody(content, file.endsWith(".css") ? "text/css; charset=UTF-8" : "application/javascript; charset=UTF-8");
+		});
+	}
+}
+
+private void writeApiError(HTTPServerResponse res, int status, string msg) @safe
+{
+	res.headers["Cache-Control"] = "no-store";
+	res.writeJsonBody(Json(["statusMessage": Json(msg)]), status);
+}
+
+/// Wraps an app route:
+/// - CORS preflights (OPTIONS) pass, since browsers never send cookies with them;
+/// - state-changing requests that carry the login cookie must come from an allowed Origin
+///   (same check as WebSocket and uploads; requests without an Origin header pass);
+/// - with `[auth] required`, anonymous requests get 401;
+/// - an `HTTPStatusException` from the handler becomes `{"statusMessage": ...}` like REST errors.
+private HTTPServerRequestDelegate guardedRoute(HTTPServerRequestDelegate cb)
+{
+	return (HTTPServerRequest req, HTTPServerResponse res) @trusted {
+		import vibe.http.common : HTTPStatusException;
+		if (req.method != HTTPMethod.OPTIONS)
+		{
+			immutable safeMethod = req.method == HTTPMethod.GET || req.method == HTTPMethod.HEAD;
+			if (!safeMethod && req.cookies.get(authCookie, null) !is null
+				&& !originAllowed(req.headers.get("Origin", ""), req.host, g_opts.allowedOrigins))
+				return writeApiError(res, 403, "origin not allowed");
+			if (g_auth.required && userFromRequest(g_auth, req).type == Json.Type.null_)
+				return writeApiError(res, 401, "login required");
+		}
+		try
+			cb(req, res);
+		catch (HTTPStatusException e)
+		{
+			if (res.headerWritten)
+				throw e;
+			writeApiError(res, e.status, e.msg);
+		}
+	};
+}
+
 /// Start serving `app` and run the event loop (blocks).
-int serve(AppFn app, ServerOptions opts = ServerOptions.init)
+/// `routes` adds your own HTTP routes (e.g. a JSON API) under the same port and base path.
+int serve(AppFn app, ServerOptions opts = ServerOptions.init, RoutesFn routes = null)
 {
 	g_app = app;
 	opts.baseUrlPath = normalizeBasePath(opts.baseUrlPath);
@@ -470,6 +615,28 @@ int serve(AppFn app, ServerOptions opts = ServerOptions.init)
 	router.post("/_upload/:sid/:wid", &handleUpload);
 	if (g_auth.enabled)
 		registerAuthRoutes(router, &g_auth);
+	immutable apiDocs = opts.api.docs && apiDocsCompiledIn;
+	if (opts.api.docs && !apiDocsCompiledIn)
+		stderr.writeln("streamlitd: [api] docs is on, but the API docs were compiled out (dub version StreamlitdNoApiDocs)");
+	AppRoute[] appRoutes;
+	try
+	{
+		if (apiDocs)
+		{
+			checkApiDocsPaths(opts.api);
+			g_opts.api = opts.api;
+		}
+		if (routes !is null)
+			appRoutes = mountUserRoutes(router, routes, apiDocs ? [opts.api.docsPath, opts.api.specPath] : null);
+		static if (apiDocsCompiledIn)
+			if (apiDocs)
+				registerApiDocs(router, buildOpenApiSpec(opts.api, opts.baseUrlPath, appRoutes, g_auth.enabled, g_auth.required));
+	}
+	catch (Exception e)
+	{
+		stderr.writeln("streamlitd: ", e.msg);
+		return 1;
+	}
 	router.get("*", &serveIndex);
 
 	auto settings = new HTTPServerSettings;
@@ -496,6 +663,9 @@ int serve(AppFn app, ServerOptions opts = ServerOptions.init)
 		writeln("  You can now view your streamlitd app in your browser.");
 		writeln();
 		writeln("  Local URL: http://localhost:", opts.port, opts.baseUrlPath, "/");
+		if (apiDocs)
+			writeln("  API docs:  http://localhost:", opts.port, opts.baseUrlPath, opts.api.docsPath,
+				"  (OpenAPI: ", opts.baseUrlPath, opts.api.specPath, ")");
 		if (opts.host == "0.0.0.0" || opts.host == "::")
 			writeln("  Listening on all network interfaces, port ", opts.port);
 		else if (opts.host != "127.0.0.1" && opts.host != "localhost")
@@ -587,6 +757,7 @@ ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction 
 		"hash-password", "Read a password from stdin and print its hash for secrets.toml", &hashPassword,
 		"auth-required", "Require login for the whole app ([auth] must be configured)", &o.authRequired,
 		"favicon", "Favicon image file (svg, png, ico, ...) for every page", &o.favicon,
+		"api-docs", "Serve the OpenAPI document and Swagger UI for the app's API (--api-docs=false turns it off)", &o.api.docs,
 		"quiet|q", "Do not print the startup banner", &o.quiet);
 	if (help.helpWanted)
 	{
@@ -642,11 +813,18 @@ unittest
 	assert(mime == "image/svg+xml" && data.length > 10);
 	parseServerArgs(["app", "--help"], null, act, helpText, false);
 	assert(act == ArgsAction.help && helpText.canFind("--design") && helpText.canFind("terminal"));
+	// API docs: off by default; env and CLI (CLI wins)
+	assert(!parseServerArgs(["app"], null, act, helpText, false).api.docs);
+	assert(parseServerArgs(["app", "--api-docs"], null, act, helpText, false).api.docs);
+	assert(parseServerArgs(["app"], ["STREAMLITD_API_DOCS": "true"], act, helpText, false).api.docs);
+	assert(!parseServerArgs(["app", "--api-docs=false"], ["STREAMLITD_API_DOCS": "true"], act, helpText, false).api.docs);
+	parseServerArgs(["app", "--help"], null, act, helpText, false);
+	assert(helpText.canFind("--api-docs"));
 }
 
 /// Parse configuration (config.toml, `STREAMLITD_*` env vars, command line) and serve.
 /// Precedence: CLI > env > config file > defaults.
-int runMain(AppFn app, string[] args)
+int runMain(AppFn app, string[] args, RoutesFn routes = null)
 {
 	import std.process : environment;
 	ServerOptions o;
@@ -677,5 +855,93 @@ int runMain(AppFn app, string[] args)
 		return 1;
 	}
 	setLogLevel(LogLevel.warn);
-	return serve(app, o);
+	return serve(app, o, routes);
+}
+
+unittest
+{
+	import std.exception : assertThrown, assertNotThrown;
+	assertThrown(checkUserRoute("/_stcore/x"));
+	assertThrown(checkUserRoute("/static/app.js"));
+	assertThrown(checkUserRoute("/auth/login"));
+	assertThrown(checkUserRoute("/oauth2callback"));
+	assertThrown(checkUserRoute("/favicon.ico"));
+	assertThrown(checkUserRoute("*"));
+	assertThrown(checkUserRoute("/docs", ["/docs", "/openapi.json"]));
+	// [api] docsPath / specPath: normalized, distinct, not under reserved prefixes
+	ApiDocsOptions a;
+	a.docsPath = "docs";
+	checkApiDocsPaths(a);
+	assert(a.docsPath == "/docs" && a.specPath == "/openapi.json");
+	foreach (bad; ["/static/x", "/_stcore/swagger/x", "/auth", "/openapi.json", "/d/*", "/d/:x", ""])
+	{
+		ApiDocsOptions b;
+		b.docsPath = bad;
+		assertThrown(checkApiDocsPaths(b), bad);
+	}
+	assertNotThrown(checkUserRoute("/docs"));
+	assertNotThrown(checkUserRoute("/api/todos/:id"));
+	assertNotThrown(checkUserRoute("/staticfiles"));
+	assertNotThrown(checkUserRoute("/webhook"));
+}
+
+// app routes: mounting, the login/origin guard and JSON errors
+unittest
+{
+	import std.algorithm : canFind;
+	import std.exception : assertThrown;
+	import vibe.inet.url : URL;
+	import vibe.http.common : HTTPStatusException;
+	import vibe.stream.memory : createMemoryOutputStream;
+	import streamlitd.auth : signValue;
+
+	auto savedAuth = g_auth, savedOpts = g_opts;
+	scope (exit) { g_auth = savedAuth; g_opts = savedOpts; }
+	g_opts = ServerOptions.init;
+	g_auth = loadAuthConfig(parseJsonString(`{"required":true}`), parseJsonString(`{"cookie_secret":"0123456789abcdef!",
+		"users":{"ann":{"password_hash":"x","name":"Ann"}}}`), "");
+
+	int calls;
+	auto main = new URLRouter;
+	mountUserRoutes(main, (URLRouter r) {
+		r.get("/api/a", (HTTPServerRequest req, HTTPServerResponse res) { calls++; res.writeBody("ok"); });
+		r.post("/api/a", (HTTPServerRequest req, HTTPServerResponse res) { calls++; res.writeBody("posted"); });
+		r.match(HTTPMethod.OPTIONS, "/api/a", (HTTPServerRequest req, HTTPServerResponse res) { calls++; res.writeBody("pre"); });
+		r.get("/api/fail", (HTTPServerRequest req, HTTPServerResponse res) { throw new HTTPStatusException(418, "teapot"); });
+	});
+	auto cookie = "streamlitd_auth=" ~ signValue(`{"sub":"ann","name":"Ann","exp":9999999999}`, g_auth.cookieSecret);
+	string call(HTTPMethod m, string path, string[string] headers = null)
+	{
+		import vibe.inet.message : InetHeaderMap;
+		InetHeaderMap h;
+		h["Host"] = "127.0.0.1:8501";
+		foreach (k, v; headers)
+			h[k] = v;
+		auto sink = createMemoryOutputStream();
+		auto req = createTestHTTPServerRequest(URL("http://127.0.0.1:8501" ~ path), m, h);
+		auto res = createTestHTTPServerResponse(sink);
+		main.handleRequest(req, res);
+		res.finalize();
+		return cast(string) sink.data.idup;
+	}
+
+	// anonymous: 401 JSON; the preflight still reaches the handler
+	auto r = call(HTTPMethod.GET, "/api/a");
+	assert(r.canFind("401") && r.canFind(`"statusMessage":"login required"`) && calls == 0, r);
+	assert(call(HTTPMethod.OPTIONS, "/api/a").canFind("pre") && calls == 1);
+	// logged in: allowed; handler exceptions become JSON
+	assert(call(HTTPMethod.GET, "/api/a", ["Cookie": cookie]).canFind("ok") && calls == 2);
+	r = call(HTTPMethod.GET, "/api/fail", ["Cookie": cookie]);
+	assert(r.canFind("418") && r.canFind(`"statusMessage":"teapot"`), r);
+	// state-changing requests with the cookie: same origin or no Origin pass, other origins get 403
+	assert(call(HTTPMethod.POST, "/api/a", ["Cookie": cookie, "Origin": "http://127.0.0.1:8501"]).canFind("posted"));
+	assert(call(HTTPMethod.POST, "/api/a", ["Cookie": cookie]).canFind("posted"));
+	r = call(HTTPMethod.POST, "/api/a", ["Cookie": cookie, "Origin": "http://evil.example"]);
+	assert(r.canFind("403") && calls == 4, r);
+	g_opts.allowedOrigins = ["http://evil.example"];
+	assert(call(HTTPMethod.POST, "/api/a", ["Cookie": cookie, "Origin": "http://evil.example"]).canFind("posted"));
+
+	assertThrown(mountUserRoutes(new URLRouter, (URLRouter r) {
+		r.get("/oauth2callback", (HTTPServerRequest req, HTTPServerResponse res) {});
+	}));
 }

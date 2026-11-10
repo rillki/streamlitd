@@ -171,6 +171,18 @@ and `labelVisibility: "visible" | "hidden" | "collapsed"`.
 | `--theme.primaryColor=#f00` | `--theme.primaryColor=#f00` |
 | `--server.baseUrlPath=/x` | `--base-url-path /x` |
 
+## JSON API endpoints (FastAPI)
+
+| Python | D |
+|---|---|
+| a separate FastAPI service | `void routes(URLRouter r) { r.registerApi(new MyApi); }` + `mixin StreamlitMain!(app, routes);` |
+| `@app.get("/items/{id}")` | `@path("/items/:id") @method(HTTPMethod.GET) Item get(long _id);` in an interface (`import vibe.web.rest;`) |
+| `raise HTTPException(404)` | `throw new HTTPStatusException(HTTPStatus.notFound, "...")` |
+| `Depends(current_user)` | `@before!requireUser("user")` + a `UserInfo user` parameter |
+| `/docs`, `/openapi.json` | `[api] docs = true` (or `STREAMLITD_API_DOCS=true`, `--api-docs`); `@apiDoc("summary")` on methods |
+
+More in [JSON API endpoints](api-endpoints.md).
+
 ## Testing
 
 | Python | D |

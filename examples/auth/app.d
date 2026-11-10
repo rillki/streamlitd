@@ -10,4 +10,13 @@ void app(St st)
 		st.logout();
 }
 
-mixin StreamlitMain!app;
+/// A JSON endpoint behind the same login ([auth] required = true answers 401 to anonymous calls).
+void routes(URLRouter r)
+{
+	r.get("/api/whoami", (HTTPServerRequest req, HTTPServerResponse res) {
+		auto u = requireUser(req, res);
+		res.writeJsonBody(["name": u.name, "email": u.email, "provider": u.provider]);
+	});
+}
+
+mixin StreamlitMain!(app, routes);

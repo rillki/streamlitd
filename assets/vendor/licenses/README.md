@@ -12,3 +12,4 @@ Vendored into `assets/vendor/`, embedded into every streamlitd binary:
 | KaTeX | 0.16.11 | MIT (`../katex/LICENSE`) |
 | Leaflet | 1.9.4 | BSD-2-Clause (`../leaflet/LICENSE`) |
 | highlight.js | 11.10.0 | BSD-3-Clause (`../hljs/LICENSE`) |
+| swagger-ui-dist (`swagger-ui-bundle.js`, `swagger-ui.css`) | 5.17.14 | Apache-2.0 (`swagger-ui-LICENSE`, `swagger-ui-NOTICE`); only in builds with the API docs compiled in (see docs/api-endpoints.md) |

@@ -24,6 +24,8 @@ Optional parameters are usually passed by name: `st.slider("x", 0, 10, 5, step: 
 - [Secrets](#secrets)
 - [Themes](#themes)
 - [Server & configuration](#server--configuration)
+- [Server, app routes & JSON API endpoints](#server-app-routes--json-api-endpoints)
+- [OpenAPI & Swagger UI](#openapi--swagger-ui)
 - [Testing (`AppTest`)](#testing-apptest)
 
 ## Text & status elements
@@ -806,32 +808,32 @@ Current URL query parameters (`st.query_params`).
 The logged-in user (`st.user`).
 
 ```d
-@property bool isLoggedIn() const
+@property bool isLoggedIn() const @trusted
 ```
 True when a user is logged in.
 
 ```d
-@property string name() const
+@property string name() const @trusted
 ```
 Display name.
 
 ```d
-@property string email() const
+@property string email() const @trusted
 ```
 E-mail address (if the provider shares it).
 
 ```d
-@property string sub() const
+@property string sub() const @trusted
 ```
 Stable subject id from the provider (username for password logins).
 
 ```d
-@property string provider() const
+@property string provider() const @trusted
 ```
 "password" or the OIDC provider name.
 
 ```d
-@property Json claims() const
+@property Json claims() const @trusted
 ```
 All stored claims.
 
@@ -1348,6 +1350,9 @@ A theme as JSON.
 
 Source: [`source/streamlitd/config.d`](../source/streamlitd/config.d)
 
+#### `struct ApiDocsOptions`
+OpenAPI schema and Swagger UI for the app's API endpoints (`[api]`, see docs/api-endpoints.md).
+
 #### `struct ServerOptions`
 Server settings (see `serve`).
 
@@ -1367,6 +1372,11 @@ string[] applyConfig(ref ServerOptions o, Json cfg)
 Apply a parsed config (`[server]`, `[theme]`, `[map]`, `[auth]`) to the options. Unknown keys (e.g. Streamlit-only options such as `runOnSave` or a `[browser]` section) are ignored and returned as warnings, so existing `.streamlit/config.toml` files work.
 
 ```d
+bool boolValue(Json v, string what)
+```
+`true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`.
+
+```d
 string streamlitFont(string v)
 ```
 Map Streamlit's font keywords ("sans serif", "serif", "monospace") to font stacks; anything else is used as a CSS font-family as is.
@@ -1374,12 +1384,132 @@ Map Streamlit's font keywords ("sans serif", "serif", "monospace") to font stack
 ```d
 void applyEnv(ref ServerOptions o, string[string] env)
 ```
-Apply `STREAMLITD_SERVER_<KEY>` / `STREAMLITD_THEME_<KEY>` environment variables (e.g. `STREAMLITD_SERVER_PORT=8080`, `STREAMLITD_THEME_PRESET=ocean`).
+Apply `STREAMLITD_SERVER_<KEY>` / `STREAMLITD_THEME_<KEY>` / `STREAMLITD_API_<KEY>` environment variables (e.g. `STREAMLITD_SERVER_PORT=8080`, `STREAMLITD_THEME_PRESET=ocean`, `STREAMLITD_API_DOCS=true`).
 
 ```d
 string normalizeBasePath(string p)
 ```
 Normalize a base path: "" or "/prefix" (leading slash, no trailing slash).
+
+## Server, app routes & JSON API endpoints
+
+Source: [`source/streamlitd/server.d`](../source/streamlitd/server.d)
+
+See [JSON API endpoints](api-endpoints.md).
+
+#### `enum maxClientMessage`
+Largest accepted client message (bytes).
+
+```d
+void loadFavicon(string path, out immutable(ubyte)[] data, out string mime)
+```
+Load the configured favicon file; throws if it cannot be read.
+
+```d
+bool originAllowed(string origin, string host, const string[] allowed)
+```
+Same-origin check for WebSocket and upload requests (protects against cross-site WebSocket hijacking). Requests without an Origin header (non-browser clients) pass.
+
+#### `alias RoutesFn`
+Registers your own HTTP routes (JSON APIs, webhooks, REST interfaces) on the app's server. See `StreamlitMain!(app, routes)` and docs/api-endpoints.md.
+
+```d
+void checkUserRoute(string pattern, const string[] extra = null)
+```
+Throws if `pattern` (a route registered by the app) collides with streamlitd's own routes. `extra` adds exact reserved paths (the API docs paths when they are served).
+
+```d
+UserInfo apiUser(HTTPServerRequest req, HTTPServerResponse res) @trusted
+```
+The logged-in streamlitd user for an API request (not logged in when auth is off). Usable as a vibe.d REST `@before!apiUser("user")` filter.
+
+```d
+UserInfo requireUser(HTTPServerRequest req, HTTPServerResponse res) @trusted
+```
+Like `apiUser`, but answers 401 when nobody is logged in. Usable as a vibe.d REST `@before!requireUser("user")` filter.
+
+```d
+int serve(AppFn app, ServerOptions opts = ServerOptions.init, RoutesFn routes = null)
+```
+Start serving `app` and run the event loop (blocks). `routes` adds your own HTTP routes (e.g. a JSON API) under the same port and base path.
+
+```d
+string[] parseThemeOverrides(string[] args, ref ThemeTokens overrides)
+```
+Extract `--theme.<key>=<value>` arguments into `overrides`; returns the remaining args.
+
+#### `enum ArgsAction`
+What `runMain` should do after parsing the command line.
+
+```d
+ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction action, out string helpText, bool readConfigFiles = true)
+```
+Build the server options from config files, `STREAMLITD_*` environment variables and the command line (precedence: CLI > env > config file > defaults). Throws on invalid input. `helpText` is filled when `--help` was given.
+
+```d
+int runMain(AppFn app, string[] args, RoutesFn routes = null)
+```
+Parse configuration (config.toml, `STREAMLITD_*` env vars, command line) and serve. Precedence: CLI > env > config file > defaults.
+
+## OpenAPI & Swagger UI
+
+Source: [`source/streamlitd/openapi.d`](../source/streamlitd/openapi.d)
+
+See [OpenAPI and Swagger UI](api-endpoints.md#openapi-and-swagger-ui).
+
+#### `struct ApiDoc`
+Summary and description of an API method in the OpenAPI document (`@apiDoc("List todos")`).
+
+```d
+ApiDoc apiDoc(string summary, string description = null) @safe pure nothrow
+```
+ditto
+
+```d
+URLRouter registerApi(TImpl)(URLRouter router, TImpl impl, RestInterfaceSettings settings = null)
+```
+Register a REST interface implementation (as vibe.d's `registerRestInterface` does) and add it to the app's OpenAPI document. Use it inside the `routes` function of `StreamlitMain!(app, routes)`.
+
+#### `struct AppRoute`
+A route of the app (method + router pattern), as seen by the server.
+
+#### `struct ApiRegistry`
+Operations and component schemas collected by `registerApi`.
+
+```d
+string openApiPath(string pattern) @safe pure
+```
+`/api/todos/:_id` → `/api/todos/{id}`.
+
+```d
+Json schemaOf(T)(ref ApiRegistry reg)
+```
+JSON schema of how vibe.d serializes `T` (checked in the serializer's order); structs and classes go to `reg.schemas` and are referenced.
+
+```d
+void describeInterface(TImpl)(RestInterfaceSettings settings, ref ApiRegistry reg)
+```
+Describe every route of a REST interface implementation into `reg`.
+
+```d
+string buildOpenApiSpec(const ApiDocsOptions opts, string basePath, const AppRoute[] routes, bool authEnabled, bool authRequired, const ref ApiRegistry reg = g_registry)
+```
+Build the OpenAPI 3.0 document: the `registerApi` operations plus every other app route.
+
+```d
+string toOrderedJson(Json j)
+```
+Pretty JSON with a stable, readable key order (vibe's `Json` objects don't keep insertion order).
+
+```d
+string swaggerPage(string title, string basePath, string specUrl)
+```
+The Swagger UI page for `specUrl` (both under `basePath`).
+
+```d
+string swaggerAsset(string file)
+```
+Embedded Swagger UI file (`swagger-ui-bundle.js`, `swagger-ui.css`), or null.
 
 ## Testing (`AppTest`)
 

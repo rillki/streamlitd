@@ -20,3 +20,6 @@ __*
 
 tests/doc-snippets/
 examples/*/tutorial
+examples/*/api
+tests/no-api-docs/no-api-docs
+tests/no-api-docs/.dub/

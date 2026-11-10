@@ -21,6 +21,7 @@ every interaction. You get a single self-contained binary that serves the web UI
 | [Deployment](deployment.md) | release builds, systemd, Docker and docker-compose, reverse proxies, scaling |
 | [Authentication](authentication.md) | password users, OIDC single sign-on (Google, Entra ID, Keycloak…), `st.user` |
 | [Custom components](custom-components.md) | static HTML/iframes and bidirectional JS components |
+| [JSON API endpoints](api-endpoints.md) | FastAPI-style REST endpoints served next to the app, sharing its login and data |
 | [Testing](testing.md) | headless `AppTest` unit tests and Playwright end-to-end tests |
 | [Porting from Python](porting-from-python.md) | a worked migration of a Python Streamlit app and common pitfalls |
 
@@ -49,6 +50,7 @@ The [`examples/`](../examples) folder contains runnable apps. Each one is used b
 | `prod` | `config.toml`, secrets, base URL path, worker threads |
 | `auth` | password and OIDC login |
 | `tutorial` | the app built in the [tutorial](tutorial.md) |
+| `api` | a dashboard plus a JSON REST API on the same port ([API endpoints](api-endpoints.md)) |
 
 Run any of them with:
 

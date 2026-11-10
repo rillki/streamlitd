@@ -15,6 +15,14 @@ if [ $status -ne 0 ]; then
 	exit $status
 fi
 
+echo "== build without API docs (StreamlitdNoApiDocs) =="
+( cd tests/no-api-docs && dub build --compiler="$DC" -q ) || { echo "no-api-docs build failed"; exit 1; }
+if grep -a -q SwaggerUIBundle tests/no-api-docs/no-api-docs; then
+	echo "Swagger UI is still embedded in a StreamlitdNoApiDocs build"
+	exit 1
+fi
+echo "ok: no generator, no Swagger UI"
+
 echo "== doc snippets =="
 DC="$DC" python3 tools/check_doc_snippets.py || exit 1
 

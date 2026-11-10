@@ -13,6 +13,21 @@ import streamlitd.secrets : deepMerge;
 import streamlitd.theme;
 import streamlitd.toml;
 
+/// OpenAPI schema and Swagger UI for the app's API endpoints (`[api]`, see docs/api-endpoints.md).
+struct ApiDocsOptions
+{
+	/// Serve the OpenAPI document and Swagger UI (`[api] docs`, `STREAMLITD_API_DOCS`, `--api-docs`). Off by default.
+	bool docs = false;
+	/// Path of the Swagger UI page, under the base path.
+	string docsPath = "/docs";
+	/// Path of the OpenAPI JSON document, under the base path.
+	string specPath = "/openapi.json";
+	/// `info.title` of the OpenAPI document.
+	string title = "streamlitd API";
+	/// `info.version` of the OpenAPI document.
+	string version_ = "1.0.0";
+}
+
 /// Server settings (see `serve`).
 struct ServerOptions
 {
@@ -45,6 +60,8 @@ struct ServerOptions
 	bool authRequired;
 	/// Raw `[auth]` table from the config file (see `streamlitd.auth`).
 	Json auth;
+	/// OpenAPI / Swagger UI settings (`[api]`).
+	ApiDocsOptions api;
 }
 
 /// Config files searched, lowest priority first.
@@ -140,10 +157,58 @@ string[] applyConfig(ref ServerOptions o, Json cfg)
 	}
 	if (cfg["auth"].type == Json.Type.object)
 		o.auth = cfg["auth"];
+	auto a = cfg["api"];
+	if (a.type == Json.Type.object)
+	{
+		foreach (string k, v; a)
+		{
+			switch (k)
+			{
+				case "docs": o.api.docs = boolValue(v, "[api] docs"); break;
+				case "docsPath": o.api.docsPath = routePath(v.get!string); break;
+				case "specPath": o.api.specPath = routePath(v.get!string); break;
+				case "title": o.api.title = v.get!string; break;
+				case "version": o.api.version_ = v.type == Json.Type.string ? v.get!string : v.toString; break;
+				default:
+					warnings ~= "ignoring unsupported [api] option '" ~ k ~ "'";
+			}
+		}
+		if (o.api.docsPath == o.api.specPath)
+			throw new Exception("[api] docsPath and specPath must differ");
+	}
 	foreach (string sec, _; cfg)
-		if (!["server", "theme", "map", "auth"].canFind(sec))
+		if (!["server", "theme", "map", "auth", "api"].canFind(sec))
 			warnings ~= "ignoring unsupported config section [" ~ sec ~ "]";
 	return warnings;
+}
+
+/// `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`.
+bool boolValue(Json v, string what)
+{
+	import std.string : toLower;
+	if (v.type == Json.Type.bool_) return v.get!bool;
+	if (v.type == Json.Type.int_) return v.get!long != 0;
+	if (v.type == Json.Type.string)
+		switch (v.get!string.toLower)
+		{
+			case "true": case "1": case "yes": case "on": return true;
+			case "false": case "0": case "no": case "off": case "": return false;
+			default: break;
+		}
+	throw new Exception(what ~ " must be true or false, not " ~ v.toString);
+}
+
+/// Normalize an `[api] docsPath` / `specPath`: leading `/`; not empty, not `/`, no `*` or `:` patterns.
+package string routePath(string p)
+{
+	import std.algorithm : canFind;
+	import std.string : strip;
+	p = p.strip;
+	if (p.length == 0 || p == "/")
+		throw new Exception("[api] paths must not be empty or /");
+	if (p.canFind('*') || p.canFind(':'))
+		throw new Exception("[api] paths must be plain paths, not patterns: " ~ p);
+	return p[0] == '/' ? p : "/" ~ p;
 }
 
 /// Map Streamlit's font keywords ("sans serif", "serif", "monospace") to font stacks;
@@ -159,8 +224,8 @@ string streamlitFont(string v)
 	}
 }
 
-/// Apply `STREAMLITD_SERVER_<KEY>` / `STREAMLITD_THEME_<KEY>` environment variables
-/// (e.g. `STREAMLITD_SERVER_PORT=8080`, `STREAMLITD_THEME_PRESET=ocean`).
+/// Apply `STREAMLITD_SERVER_<KEY>` / `STREAMLITD_THEME_<KEY>` / `STREAMLITD_API_<KEY>` environment variables
+/// (e.g. `STREAMLITD_SERVER_PORT=8080`, `STREAMLITD_THEME_PRESET=ocean`, `STREAMLITD_API_DOCS=true`).
 void applyEnv(ref ServerOptions o, string[string] env)
 {
 	auto cfg = Json.emptyObject;
@@ -178,6 +243,14 @@ void applyEnv(ref ServerOptions o, string[string] env)
 	foreach (k; themeKeys)
 		if (auto v = ("STREAMLITD_THEME_" ~ k.toUpper) in env)
 			cfg["theme"][k] = *v;
+	static immutable apiKeys = ["docs", "docsPath", "specPath", "title", "version"];
+	foreach (k; apiKeys)
+		if (auto v = ("STREAMLITD_API_" ~ k.toUpper) in env)
+		{
+			if (cfg["api"].type != Json.Type.object)
+				cfg["api"] = Json.emptyObject;
+			cfg["api"][k] = *v;
+		}
 	applyConfig(o, cfg);
 }
 
@@ -228,6 +301,18 @@ primaryColor = "#123456"
 	auto w = applyConfig(o, parseToml("[server]\nrunOnSave = true\nport = 9200\n[browser]\ngatherUsageStats = false\n[theme]\nfont = \"serif\"\n"));
 	assert(w.length == 2 && o.port == 9200, w.to!string);
 	assert(o.theme.overrides.font == fontSerif);
+	// [api]: off by default; config, env (1/true/yes) and paths
+	assert(!ServerOptions.init.api.docs);
+	w = applyConfig(o, parseToml("[api]\ndocs = true\ndocsPath = \"swagger\"\ntitle = \"Todos\"\nversion = \"2.1\"\nfoo = 1\n"));
+	assert(o.api.docs && o.api.docsPath == "/swagger" && o.api.specPath == "/openapi.json" && o.api.title == "Todos"
+		&& o.api.version_ == "2.1" && w.length == 1, w.to!string);
+	applyEnv(o, ["STREAMLITD_API_DOCS": "0"]);
+	assert(!o.api.docs);
+	applyEnv(o, ["STREAMLITD_API_DOCS": "yes", "STREAMLITD_API_SPECPATH": "/spec.json"]);
+	assert(o.api.docs && o.api.specPath == "/spec.json");
+	import std.exception : assertThrown;
+	assertThrown(applyEnv(o, ["STREAMLITD_API_DOCS": "maybe"]));
+	assertThrown(applyConfig(o, parseToml("[api]\ndocsPath = \"/x\"\nspecPath = \"/x\"\n")));
 	assert(normalizeBasePath("app/") == "/app");
 	assert(normalizeBasePath("/") == "");
 	assert(normalizeBasePath("") == "");

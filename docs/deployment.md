@@ -150,6 +150,8 @@ allowedOrigins = ["https://apps.example.com"]
 
 ## 5. Health checks and monitoring
 
+- `GET <base>/docs` and `<base>/openapi.json` serve Swagger UI and the OpenAPI document when
+  `[api] docs = true` (see [API endpoints](api-endpoints.md#openapi-and-swagger-ui)).
 - `GET <base>/favicon.ico` (and `/favicon.ico` at the server root) serves the app-wide favicon,
   or streamlitd's default icon. Configure it with `[server] favicon` / `--favicon`.
 - `GET <base>/_stcore/health` returns `ok` with HTTP 200. Use it for load balancer and
@@ -200,4 +202,7 @@ For more than one replica, enable session affinity, e.g. with the ingress annota
       long random `cookie_secret`.
 - [ ] Set `allowedOrigins` only if you really embed the app on another site.
 - [ ] Set `--max-upload-mb`, `--max-sessions` and `--idle-timeout` to fit your environment.
+- [ ] Keep the API docs (`[api] docs`, off by default) off on public deployments unless you want the
+      API's description to be visible, or build with the dub version `StreamlitdNoApiDocs` to leave
+      them out of the binary ([API endpoints](api-endpoints.md#openapi-and-swagger-ui)).
 - [ ] Only use custom components you trust (they run with access to the page).

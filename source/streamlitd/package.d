@@ -24,7 +24,15 @@ public import streamlitd.elements : ProgressBar, Spinner;
 public import streamlitd.media : UploadedFile;
 public import streamlitd.pages : Page;
 public import streamlitd.cache : cacheData, cacheResource, cacheClear, clearAllCaches;
-public import streamlitd.server : serve, runMain, ServerOptions;
+public import streamlitd.server : serve, runMain, ServerOptions, RoutesFn, apiUser, requireUser;
+// HTTP API building blocks (FastAPI-like endpoints next to the app; see docs/api-endpoints.md)
+public import vibe.http.router : URLRouter;
+public import vibe.http.server : HTTPServerRequest, HTTPServerResponse;
+public import vibe.http.common : HTTPStatusException, HTTPMethod;
+public import vibe.http.status : HTTPStatus;
+public import vibe.web.rest : registerRestInterface, RestInterfaceSettings, RestInterfaceClient;
+public import streamlitd.openapi : registerApi, ApiDoc, apiDoc, apiDocsCompiledIn;
+// route attributes (@path, @method, @before, @queryParam, ...) come from `import vibe.web.rest;`
 public import streamlitd.secrets : Secrets, secrets;
 public import streamlitd.components : Component, declareComponent;
 public import streamlitd.fragments : StatusContainer;
@@ -35,12 +43,18 @@ public import vibe.data.json : Json, parseJsonString;
 public import std.datetime : Date, TimeOfDay;
 
 /// Generates `main()` that serves `app` (a `void app(St st)` function).
-mixin template StreamlitMain(alias app)
+/// `StreamlitMain!(app, routes)` also registers your own HTTP routes with a
+/// `void routes(URLRouter r)` function, e.g. a JSON API (see docs/api-endpoints.md).
+mixin template StreamlitMain(alias app, routes...)
 {
+	static assert(routes.length <= 1, "StreamlitMain!(app, routes) takes at most one routes function");
 	int main(string[] args)
 	{
 		import std.functional : toDelegate;
 		import streamlitd.server : runMain;
-		return runMain(toDelegate(&app), args);
+		static if (routes.length == 0)
+			return runMain(toDelegate(&app), args);
+		else
+			return runMain(toDelegate(&app), args, toDelegate(&routes[0]));
 	}
 }
