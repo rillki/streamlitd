@@ -2,18 +2,26 @@
 
 ## 1. Install the toolchain
 
-streamlitd needs a D compiler and dub (the D package manager/build tool). **LDC** is the
-recommended compiler. streamlitd is tested with LDC 1.36 (D frontend 2.106).
+streamlitd needs a D compiler and dub (the D package manager/build tool). Two compilers work:
+
+- **LDC ≥ 1.36**, recommended: optimized, faster binaries. Tested with LDC 1.36 (D frontend 2.106).
+- **DMD ≥ 2.106**, the reference compiler: much faster builds, handy while developing. Tested with DMD 2.114.
+
+gdc is not supported: the gdc 13 shipped with Ubuntu 24.04 is too old for vibe.d (and the gdc from
+`install.sh` is from 2013).
 
 | OS | Install |
 |---|---|
 | Ubuntu / Debian | `sudo apt install ldc dub libssl-dev zlib1g-dev` |
 | Fedora | `sudo dnf install ldc dub openssl-devel zlib-devel` |
 | macOS | `brew install ldc dub` |
-| Windows / other | the installer at <https://dlang.org/download.html> (choose LDC), or `curl -fsS https://dlang.org/install.sh \| bash -s ldc` |
+| Windows / other | the installer at <https://dlang.org/download.html> (LDC or DMD), or `curl -fsS https://dlang.org/install.sh \| bash -s ldc` (or `-s dmd`) |
 
-> **Always pass `--compiler=ldc2`** to dub, or set `DC=ldc2`. On some systems dub picks
-> `gdc` by default, which is too old for vibe.d.
+`install.sh` puts the compiler in `~/dlang/`; run `source ~/dlang/<compiler>/activate` in each new
+shell (it also sets `DC`).
+
+> **Always pass `--compiler=ldc2` (or `--compiler=dmd`)** to dub, or set `DC`. On some systems dub
+> picks `gdc` by default, which is too old for vibe.d. The examples in these docs use `ldc2`.
 
 ## 2. Create a project
 

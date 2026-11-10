@@ -1,8 +1,8 @@
 # Troubleshooting & FAQ
 
 ### `dub build` fails with errors inside vibe.d, or about named arguments
-dub picked the wrong compiler (often `gdc`). Use `dub build --compiler=ldc2` or `export DC=ldc2`.
-LDC ≥ 1.36 is required.
+dub picked the wrong compiler (often `gdc`). Use `dub build --compiler=ldc2` (or `--compiler=dmd`),
+or `export DC=ldc2`. LDC ≥ 1.36 or DMD ≥ 2.106 is required; gdc is not supported.
 
 ### "named arguments with Implicit Function Template Instantiation are not supported yet"
 You passed a named argument to a template function, e.g. `st.radioOf("x", [1, 2], horizontal: true)`.

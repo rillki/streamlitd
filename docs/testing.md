@@ -130,6 +130,7 @@ Run everything (unit, e2e and doc snippets) with:
 
 ```sh
 ./run-tests.sh
+DC=dmd ./run-tests.sh   # with DMD instead of LDC (default: ldc2); DC applies to every step
 ```
 
 Playwright uses the Chromium in `~/.cache/ms-playwright`, or `CHROMIUM_PATH`.

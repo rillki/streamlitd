@@ -21,7 +21,7 @@ mixin StreamlitMain!app;
 ```
 
 ```sh
-dub run --compiler=ldc2          # → http://localhost:8501
+dub run                          # → http://localhost:8501
 ```
 
 📚 **Documentation:** [docs/](docs/README.md) has the [getting started](docs/getting-started.md) guide, the
@@ -92,7 +92,7 @@ win95, XP, brutalist, material and glass, each usable with any color scheme:
 
 ## Requirements
 
-- LDC ≥ 1.36 and dub. **Always build with `--compiler=ldc2`**, because dub may otherwise pick gdc.
+- dub and a D compiler. Tested with LDC 1.36 and DMD 2.114.
 - OpenSSL 3 and zlib at runtime, as with every vibe.d app.
 
 ## Repository layout
