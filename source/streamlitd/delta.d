@@ -39,6 +39,7 @@ import streamlitd.mediaelements : MediaElements;
 import streamlitd.pages : PageElements;
 import streamlitd.fragments : FragmentElements, StatusContainer;
 import streamlitd.components : ComponentElements, ComponentsApi, findComponent;
+import streamlitd.extensions : CustomElements, isElementRegistered;
 
 /// Root containers.
 enum RootContainer : int { main = 0, sidebar = 1, bottom = 2 }
@@ -362,6 +363,7 @@ final class St
 	mixin PageElements;
 	mixin FragmentElements;
 	mixin ComponentElements;
+	mixin CustomElements;
 }
 
 package UserInfo makeUserInfo(Json data) { return UserInfo(data); }

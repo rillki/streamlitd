@@ -1,0 +1,9 @@
+{
+	"name": "custom",
+	"description": "streamlitd example: an app's own color schemes, design style and native widgets/elements",
+	"targetType": "executable",
+	"dependencies": { "streamlitd": { "path": "../.." } },
+	"sourcePaths": ["."],
+	"importPaths": ["."],
+	"stringImportPaths": ["ui"]
+}

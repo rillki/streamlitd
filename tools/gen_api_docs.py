@@ -17,6 +17,7 @@ SECTIONS = [
     ("Media, files & downloads", "mediaelements.d", "", "mixin"),
     ("Navigation (multipage)", "pages.d", "", None),
     ("Custom components", "components.d", "", None),
+    ("Custom elements & widgets", "extensions.d", "See [Extending streamlitd](extending.md).", None),
     ("App control, page config, themes, auth (`St` core)", "delta.d", "", None),
     ("Session state (`st.session`)", "state.d", "", None),
     ("DataFrame", "dataframe.d", "", None),

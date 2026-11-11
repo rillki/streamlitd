@@ -44,7 +44,7 @@ fragments and dialogs behave as in the browser.
 |---|---|
 | `new AppTest(&fn)` | wrap a `void fn(St)` (or a delegate) |
 | `.run()` | run until no rerun is pending; returns `this` |
-| `.setValue(kind, label, Json)` | change a widget (kinds: `text_input`, `slider`, `selectbox`, `checkbox`, ...); selection widgets take the **index** |
+| `.setValue(kind, label, Json)` | change a widget (kinds: `text_input`, `slider`, `selectbox`, `checkbox`, ..., and `custom` for `st.customWidget`); selection widgets take the **index** |
 | `.setValueById(id, Json)` | same, by widget id |
 | `.click(label, kind = "button")` | click a button (`"form_submit_button"`, `"download_button"`) |
 | `.submitForm(buttonLabel, [id: value])` | submit a form with values |
@@ -52,6 +52,7 @@ fragments and dialogs behave as in the browser.
 | `.elements(kind)` | elements of the last run in page order, as `Json` (`heading`, `markdown`, `alert`, `metric`, `dataframe`, `block`, …) |
 | `.texts(kind)`, `.markdowns`, `.headings`, `.alerts` | text bodies of an element kind |
 | `.widget(kind, label)` | the widget element (`["value"]`, `["options"]`, …) |
+| `.customElements(name)` | the custom elements and widgets named `name` (`st.customElement`, `st.customWidget`; see [Extending](extending.md)) |
 | `.exceptions` | errors shown in the page |
 | `.messages(type)` | other messages of the last run (`toast`, `navigation`, `set_theme`, …) |
 | `.lastStatus` | `RunStatus.ok`, `error`, `stopped` |
@@ -66,8 +67,8 @@ Run the tests with `dub test --compiler=ldc2`.
 ## End-to-end tests (Playwright)
 
 The repository's `tests/e2e` folder shows the setup. `playwright.config.js` builds and starts
-each example app on its own port (ports 8701 to 8711; the `api` example also runs a second time under the
-base path `/sub` on 8712, with `--api-docs=false`), and the specs drive a real browser. API specs use Playwright's `request` fixture
+each example app on its own port (ports 8701 to 8711, and 8713 for `custom`; the `api` example also runs a
+second time under the base path `/sub` on 8712, with `--api-docs=false`), and the specs drive a real browser. API specs use Playwright's `request` fixture
 for plain HTTP calls:
 
 ```js

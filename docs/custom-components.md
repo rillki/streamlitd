@@ -1,5 +1,10 @@
 # Custom components
 
+Components run in a sandboxed iframe, so they can come from anyone, and existing Streamlit
+components work unchanged. For your own widgets that should look and behave like the built-in
+ones (theme, design, focus, forms), register a [native element](extending.md#native-elements-and-widgets)
+instead: it renders directly in the page.
+
 ## Static HTML and iframes
 
 <!-- wrap -->

@@ -27,6 +27,7 @@
 | `auth.d`, `authserver.d` | PBKDF2, signed cookies; login routes and OIDC |
 | `testing.d` | `AppTest` |
 | `assetlist.d` | generated list of embedded assets (`tools/gen_assets.py`); Swagger UI has its own list, `swaggerAssetNames` |
+| `extensions.d` | app-defined native elements and widgets (`registerElement`, `st.customElement`, `st.customWidget!T`) and the combined extension stylesheet/script; the scheme and design registries live in `theme.d` |
 | `openapi.d` | `registerApi`, OpenAPI 3.0 generation from REST interfaces (compile-time schemas), Swagger UI page; compiled out with the version `StreamlitdNoApiDocs` |
 
 ## Protocol
@@ -115,6 +116,25 @@ on the server, so a tampered value falls back to the default.
    needs different chrome for it, add scoped rules to `assets/designs.css` (see [Theming](theming.md#writing-your-own-design-contributors)).
 4. Add an `AppTest` unit test (`tests/unit/apptests.d`) and a Playwright check (`tests/e2e/specs/`).
 5. Regenerate the docs: `python3 tools/gen_api_docs.py`.
+
+## App extensions
+
+Apps can register color schemes, design styles and native elements ([Extending](extending.md)).
+
+- **Registries:** `theme.d` keeps the app's schemes and designs next to the built-in lists
+  (`builtinPresets()`, `builtinDesigns()`); `themePresets()` / `designStyles()` return both.
+  `extensions.d` keeps the elements. The registries are `__gshared` behind one mutex
+  (`g_extLock`), because sessions run on worker threads. `serve` registers the `config.toml`
+  entries, then freezes the registries (later registrations throw).
+- **Assets:** the design CSS and element CSS are combined at startup into `_stcore/ext.css`; each
+  element's script is served on its own as `_stcore/ext/<name>.js`, so a syntax error in one does not
+  stop the others (each is also wrapped in a function with a `try` that logs runtime errors with
+  the element's name). `serveIndex` links them with a content hash (cached as immutable), only when
+  there are any.
+- **Frontend:** `window.StreamlitD.registerElement(name, def)` fills a registry in `app.js`.
+  `RENDERERS.custom` draws `kind: "custom"` elements with it (or an error box when nothing was
+  registered), and updates them in place through `def.render(...).update`. Widget values use
+  `widgetChanged` / `triggerWidget`, like the built-in widgets.
 
 ## Vendored libraries
 

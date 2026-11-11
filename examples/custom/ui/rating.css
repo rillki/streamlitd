@@ -1,0 +1,5 @@
+.rating { display: flex; gap: .15rem; }
+.rating-star { background: none; border: 0; padding: 0 .1rem; font-size: 1.7rem; line-height: 1; cursor: pointer; color: var(--border); }
+.rating-star.on { color: var(--primary); }
+.rating-star:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: var(--radius); }
+.rating-star:disabled { cursor: default; opacity: .5; }

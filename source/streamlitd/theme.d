@@ -7,6 +7,7 @@
 /// work with every scheme in both modes.
 module streamlitd.theme;
 
+import core.sync.mutex : Mutex;
 import std.algorithm : canFind, map;
 import std.array : array, join;
 import vibe.data.json;
@@ -129,8 +130,17 @@ enum fontWin95 = `Tahoma, "MS Sans Serif", "Microsoft Sans Serif", Geneva, Verda
 enum fontXp = `Tahoma, "Segoe UI", Verdana, "DejaVu Sans", sans-serif`;
 enum fontMaterial = `Roboto, "Segoe UI", "Helvetica Neue", Arial, system-ui, sans-serif`;
 
-/// All design styles, in menu order. The first one is the default.
+/// All design styles, in menu order: the built-in ones (the first is the default), then the
+/// app's own (`registerDesign`, `[theme.designs.<name>]`).
 DesignStyle[] designStyles()
+{
+	auto b = builtinDesigns();
+	synchronized (g_extLock)
+		return g_customDesigns.length ? b ~ g_customDesigns : b;
+}
+
+/// The design styles that ship with streamlitd.
+DesignStyle[] builtinDesigns()
 {
 	static DesignStyle[] cache;
 	if (cache.length)
@@ -232,8 +242,17 @@ private ThemeTokens tk(string primary, string bg, string bg2, string text, strin
 	return t;
 }
 
-/// All presets, in menu order. The first one is the default.
+/// All color schemes, in menu order: the built-in ones (the first is the default), then the
+/// app's own (`registerColorScheme`, `[theme.schemes.<name>]`).
 ThemePreset[] themePresets()
+{
+	auto b = builtinPresets();
+	synchronized (g_extLock)
+		return g_customSchemes.length ? b ~ g_customSchemes : b;
+}
+
+/// The color schemes that ship with streamlitd.
+ThemePreset[] builtinPresets()
 {
 	static ThemePreset[] cache;
 	if (cache.length)
@@ -313,18 +332,231 @@ const(ThemePreset)* findPreset(string name)
 	return null;
 }
 
-/// Validate a theme; throws on unknown preset/mode.
-void validateTheme(const Theme t)
+/// Validate a theme; throws on unknown preset/mode. `moreSchemes`/`moreDesigns` are names that
+/// will be registered when the server starts (from `config.toml`).
+void validateTheme(const Theme t, const string[] moreSchemes = null, const string[] moreDesigns = null)
 {
 	import streamlitd.errors : StreamlitAPIException;
-	if (findPreset(t.scheme) is null)
+	if (findPreset(t.scheme) is null && !moreSchemes.canFind(t.scheme))
 		throw new StreamlitAPIException(`Unknown color scheme "` ~ t.scheme ~ `". Available: ` ~
-			colorSchemeNames().join(", "));
-	if (findDesign(t.design) is null)
+			(colorSchemeNames() ~ moreSchemes).join(", "));
+	if (findDesign(t.design) is null && !moreDesigns.canFind(t.design))
 		throw new StreamlitAPIException(`Unknown design style "` ~ t.design ~ `". Available: ` ~
-			designNames().join(", "));
+			(designNames() ~ moreDesigns).join(", "));
 	if (!["auto", "light", "dark"].canFind(t.mode))
 		throw new StreamlitAPIException(`Theme mode must be "auto", "light" or "dark", not "` ~ t.mode ~ `"`);
+}
+
+// ------------------------------------------------------------------ app-defined schemes and designs
+
+private __gshared ThemePreset[] g_customSchemes;
+private __gshared DesignStyle[] g_customDesigns;
+private __gshared string[string] g_designCss;   // design name -> its CSS
+private __gshared bool g_extFrozen;
+package __gshared Mutex g_extLock;                // also guards streamlitd.extensions
+shared static this() { g_extLock = new Mutex; }
+
+/// Throws unless `name` is a valid extension name (`[a-z0-9_-]+`) of the given kind.
+package void checkExtensionName(string what, string name)
+{
+	import streamlitd.errors : StreamlitAPIException;
+	if (!name.length)
+		throw new StreamlitAPIException(what ~ " name must not be empty");
+	foreach (c; name)
+		if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-'))
+			throw new StreamlitAPIException(what ~ ` name "` ~ name ~ `" may only contain a-z, 0-9, '_' and '-'`);
+}
+
+/// Throws once the server has started (extensions are sent to each session when it opens).
+package void checkNotFrozen(string what)
+{
+	import streamlitd.errors : StreamlitAPIException;
+	if (g_extFrozen)
+		throw new StreamlitAPIException(what ~ " must be called before the server starts " ~
+			"(e.g. in `shared static this()` or in main before serve/runMain)");
+}
+
+/// Called by `serve`: no more registrations.
+package void freezeExtensions() { synchronized (g_extLock) g_extFrozen = true; }
+
+/// Forget all app-defined schemes, designs and elements (tests).
+package void resetThemeExtensions()
+{
+	synchronized (g_extLock)
+	{
+		g_customSchemes = null;
+		g_customDesigns = null;
+		g_designCss = null;
+		g_extFrozen = false;
+	}
+}
+
+/// `#rgb` / `#rrggbb` → `#rrggbb` (lower case); throws otherwise.
+package string normalizeHexColor(string c, string where)
+{
+	import std.ascii : isHexDigit, toLower;
+	import streamlitd.errors : StreamlitAPIException;
+	bool ok = c.length > 1 && c[0] == '#' && (c.length == 4 || c.length == 7);
+	foreach (ch; ok ? c[1 .. $] : "")
+		ok = ok && isHexDigit(ch);
+	if (!ok)
+		throw new StreamlitAPIException(where ~ `: colors must be "#rgb" or "#rrggbb", not "` ~ c ~ `"`);
+	string r = "#";
+	if (c.length == 4)
+		foreach (ch; c[1 .. $]) { r ~= toLower(ch); r ~= toLower(ch); }
+	else
+		foreach (ch; c[1 .. $]) r ~= toLower(ch);
+	return r;
+}
+
+private void normalizeColors(ref ThemeTokens t, string where)
+{
+	static foreach (f; ["primaryColor", "primaryTextColor", "backgroundColor", "secondaryBackgroundColor", "textColor",
+		"linkColor", "borderColor", "sidebarBackgroundColor", "widgetBackgroundColor", "widgetBorderColor", "codeBackgroundColor"])
+		if (__traits(getMember, t, f) !is null)
+			__traits(getMember, t, f) = normalizeHexColor(__traits(getMember, t, f), where ~ " " ~ f);
+	foreach (ref c; t.chartColors)
+		c = normalizeHexColor(c, where ~ " chartColors");
+}
+
+/// Add a color scheme to the viewer menu, `Theme(...)`, `[theme] scheme` and `--color-scheme`.
+///
+/// Tokens not given come from the `base` scheme. `both` applies to light and dark mode; `light`
+/// and `dark` win over it. Colors are `#rgb` or `#rrggbb`. `linkColor` follows `primaryColor`
+/// unless it is set. Call it before the server starts, e.g. in `shared static this()`:
+/// ---
+/// ThemeTokens acme;
+/// acme.primaryColor = "#0055aa";
+/// registerColorScheme("acme", "Acme Corp", both: acme);
+/// ---
+void registerColorScheme(string name, string label = null, ThemeTokens both = ThemeTokens.init,
+	ThemeTokens light = ThemeTokens.init, ThemeTokens dark = ThemeTokens.init, string base = "streamlit")
+{
+	import streamlitd.errors : StreamlitAPIException;
+	checkNotFrozen("registerColorScheme");
+	checkExtensionName("color scheme", name);
+	auto where = `color scheme "` ~ name ~ `"`;
+	if (findPreset(name) !is null)
+		throw new StreamlitAPIException(where ~ " already exists");
+	auto b = findPreset(base);
+	if (b is null)
+		throw new StreamlitAPIException(where ~ `: unknown base scheme "` ~ base ~ `"`);
+	foreach (t; [&both, &light, &dark])
+		normalizeColors(*t, where);
+	ThemeTokens variant(const ThemeTokens from, const ThemeTokens own)
+	{
+		auto user = both.merged(own);
+		auto r = from.merged(user);
+		if (user.primaryColor !is null && user.linkColor is null)
+			r.linkColor = user.primaryColor;
+		return r;
+	}
+	ThemePreset p;
+	p.name = name;
+	p.label = label.length ? label : name;
+	p.light = variant(b.light, light);
+	p.dark = variant(b.dark, dark);
+	synchronized (g_extLock)
+		g_customSchemes ~= p;
+}
+
+/// Add a design style. `css` (or the file `cssPath`) holds its rules, each scoped by
+/// `:root[data-design="<name>"]` (and `.dc-preview[data-design="<name>"]` for its card in the
+/// appearance menu); see docs/theming.md. Call it before the server starts.
+void registerDesign(DesignStyle style, string css = null, string cssPath = null)
+{
+	import std.file : readText;
+	import std.stdio : stderr;
+	import streamlitd.errors : StreamlitAPIException;
+	checkNotFrozen("registerDesign");
+	checkExtensionName("design style", style.name);
+	auto where = `design style "` ~ style.name ~ `"`;
+	if (findDesign(style.name) !is null)
+		throw new StreamlitAPIException(where ~ " already exists");
+	if (css.length && cssPath.length)
+		throw new StreamlitAPIException(where ~ ": give css or cssPath, not both");
+	if (cssPath.length)
+	{
+		try
+			css = readText(cssPath);
+		catch (Exception e)
+			throw new StreamlitAPIException(where ~ ": cannot read " ~ cssPath ~ ": " ~ e.msg);
+	}
+	if (!style.label.length)
+		style.label = style.name;
+	if (style.headingFont is null)
+		style.headingFont = style.font;
+	foreach (w; cssScopeWarnings(css, style.name))
+		stderr.writeln("streamlitd: ", where, ": ", w);
+	synchronized (g_extLock)
+	{
+		g_customDesigns ~= style;
+		if (css.length)
+			g_designCss[style.name] = css;
+	}
+}
+
+/// The CSS of all app-defined designs, in registration order.
+package string customDesignCss()
+{
+	string r;
+	synchronized (g_extLock)
+		foreach (d; g_customDesigns)
+			if (auto c = d.name in g_designCss)
+				r ~= "/* design: " ~ d.name ~ " */\n" ~ *c ~ "\n";
+	return r;
+}
+
+/// Selectors in `css` that are not scoped to the design `name` (they would restyle every design).
+package string[] cssScopeWarnings(string css, string name)
+{
+	import std.algorithm : startsWith, splitter;
+	import std.string : strip, indexOf;
+	import std.regex : regex, replaceAll;
+	css = css.replaceAll(regex(`/\*[\s\S]*?\*/`), "");
+	string[] warns;
+	auto scoped = [`[data-design="` ~ name ~ `"]`, `[data-design='` ~ name ~ `']`, `[data-design=` ~ name ~ `]`];
+	// walk the blocks: selectors of style rules at the top level or inside @media/@supports
+	void walk(string s)
+	{
+		size_t i = 0;
+		while (i < s.length)
+		{
+			auto open = s.indexOf('{', i);
+			if (open < 0)
+				break;
+			auto head = s[i .. open].strip;
+			// find the matching '}'
+			size_t depth = 1, j = open + 1;
+			for (; j < s.length && depth; j++)
+				if (s[j] == '{') depth++;
+				else if (s[j] == '}') depth--;
+			auto bodyEnd = j > 0 ? j - 1 : j;
+			auto lastSemi = head.lastIndexOfSemi;
+			if (lastSemi >= 0)
+				head = head[lastSemi + 1 .. $].strip; // e.g. after an @import line
+			if (head.startsWith("@media") || head.startsWith("@supports") || head.startsWith("@container") || head.startsWith("@layer"))
+				walk(s[open + 1 .. bodyEnd]);
+			else if (!head.startsWith("@")) // @keyframes, @font-face: fine
+				foreach (sel; head.splitter(','))
+				{
+					auto t = sel.strip;
+					if (t.length && !scoped.canFind!(sc => t.indexOf(sc) >= 0))
+						warns ~= "CSS rule `" ~ t ~ "` is not scoped to [data-design=\"" ~ name ~ "\"]";
+				}
+			i = j;
+		}
+	}
+	walk(css);
+	return warns;
+}
+
+private ptrdiff_t lastIndexOfSemi(string s) @safe pure nothrow
+{
+	foreach_reverse (i, c; s)
+		if (c == ';' || c == '}')
+			return i;
+	return -1;
 }
 
 /// All presets as JSON (sent to the browser once per session).
@@ -347,8 +579,8 @@ unittest
 {
 	import std.regex : matchFirst, regex;
 	auto hex = regex(`^#[0-9a-fA-F]{6}$`);
-	assert(themePresets().length == 8);
-	foreach (p; themePresets())
+	assert(builtinPresets().length == 8);
+	foreach (p; builtinPresets())
 		foreach (t; [p.light, p.dark])
 		{
 			foreach (c; [t.primaryColor, t.primaryTextColor, t.backgroundColor, t.secondaryBackgroundColor,
@@ -379,11 +611,65 @@ unittest
 	Theme old;
 	old.preset = "paper"; // deprecated alias
 	assert(old.scheme == "paper" && old.preset == "paper");
-	assert(designStyles().length == 8 && designStyles()[0].name == "streamlit");
-	foreach (dsn; designStyles())
+	assert(builtinDesigns().length == 8 && designStyles()[0].name == "streamlit");
+	foreach (dsn; builtinDesigns())
 		assert(dsn.label.length && dsn.description.length, dsn.name);
 	assert(findDesign("terminal").font == fontTerminal && findDesign("streamlit").font is null);
 	assert(designsJson()[1]["tokens"]["baseRadius"].get!string == "0");
 	assertThrown(validateTheme(Theme("ocean", "purple")));
 	validateTheme(Theme("paper", "dark"));
+}
+
+// app-defined color schemes and designs
+unittest
+{
+	import std.exception : assertThrown;
+	import streamlitd.errors : StreamlitAPIException;
+	resetThemeExtensions();
+	scope (exit) resetThemeExtensions();
+
+	ThemeTokens both, dark;
+	both.primaryColor = "#05A";
+	dark.backgroundColor = "#0b1220";
+	registerColorScheme("acme", "Acme Corp", both: both, dark: dark);
+	auto p = findPreset("acme");
+	assert(p !is null && p.label == "Acme Corp" && colorSchemeNames()[$ - 1] == "acme");
+	assert(p.light.primaryColor == "#0055aa" && p.dark.primaryColor == "#0055aa" && p.light.linkColor == "#0055aa");
+	assert(p.dark.backgroundColor == "#0b1220" && p.light.backgroundColor == "#ffffff"); // rest from "streamlit"
+	assert(p.light.chartColors.length == 10 && p.dark.font.length);
+	assert(presetsJson()[$ - 1]["name"].get!string == "acme");
+	validateTheme(Theme("acme"));
+	validateTheme(Theme("later", "auto", "neon2"), ["later"], ["neon2"]);
+	assertThrown!StreamlitAPIException(registerColorScheme("acme"));          // taken
+	assertThrown!StreamlitAPIException(registerColorScheme("ocean"));         // built-in
+	assertThrown!StreamlitAPIException(registerColorScheme("Bad Name"));
+	assertThrown!StreamlitAPIException(registerColorScheme("x", base: "nope"));
+	ThemeTokens bad;
+	bad.textColor = "red";
+	assertThrown!StreamlitAPIException(registerColorScheme("y", both: bad));
+	assert(findPreset("y") is null);
+
+	DesignStyle d;
+	d.name = "neon";
+	d.font = fontMono;
+	d.baseRadius = "4px";
+	registerDesign(d, css: `:root[data-design="neon"] .stButton { box-shadow: 0 0 8px var(--primary); }`);
+	assert(findDesign("neon").label == "neon" && findDesign("neon").headingFont == fontMono);
+	assert(designsJson()[$ - 1]["tokens"]["baseRadius"].get!string == "4px");
+	assert(customDesignCss().canFind("box-shadow"));
+	assertThrown!StreamlitAPIException(registerDesign(d));                    // taken
+	DesignStyle t;
+	t.name = "terminal";
+	assertThrown!StreamlitAPIException(registerDesign(t));                    // built-in
+
+	// CSS scope check: only unscoped rules are reported
+	auto w = cssScopeWarnings(`/* c */ :root[data-design="neon"] h1, .dc-preview[data-design='neon'] .dc-btn { color: red }
+@media (max-width: 600px) { :root[data-design=neon] p { margin: 0 } body { margin: 0 } }
+@keyframes glow { from { opacity: 0 } to { opacity: 1 } }
+.stButton { color: blue }`, "neon");
+	assert(w.length == 2 && w[0].canFind("body") && w[1].canFind(".stButton"), w.join("; "));
+
+	freezeExtensions();
+	assertThrown!StreamlitAPIException(registerColorScheme("late"));
+	assert(normalizeHexColor("#ABC", "x") == "#aabbcc");
 }

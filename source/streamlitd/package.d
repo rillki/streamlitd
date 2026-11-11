@@ -37,7 +37,9 @@ public import streamlitd.secrets : Secrets, secrets;
 public import streamlitd.components : Component, declareComponent;
 public import streamlitd.fragments : StatusContainer;
 public import streamlitd.theme : Theme, ThemeTokens, DesignStyle, colorSchemeNames, designNames, themePresetNames,
-	fontSans, fontSerif, fontMono, fontRounded;
+	fontSans, fontSerif, fontMono, fontRounded, registerColorScheme, registerDesign;
+// app-defined native elements and widgets (see docs/extending.md)
+public import streamlitd.extensions : registerElement, elementNames;
 public import streamlitd.testing : AppTest;
 public import vibe.data.json : Json, parseJsonString;
 public import std.datetime : Date, TimeOfDay;

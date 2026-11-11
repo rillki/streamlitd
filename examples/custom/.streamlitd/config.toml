@@ -1,0 +1,31 @@
+# Extensions defined in config: a color scheme, a design style and a custom widget.
+# (The "acme" scheme and the "badge" element are registered in app.d instead.)
+
+[theme]
+scheme = "acme"          # registered in app.d
+design = "streamlit"
+
+[theme.schemes.dusk]
+label = "Dusk"
+base = "streamlit"
+primaryColor = "#7c3aed"            # both modes
+chartColors = ["#7c3aed", "#06b6d4", "#f59e0b", "#ef4444", "#10b981"]
+[theme.schemes.dusk.light]
+backgroundColor = "#faf7ff"
+secondaryBackgroundColor = "#efe9fb"
+[theme.schemes.dusk.dark]
+backgroundColor = "#15111f"
+secondaryBackgroundColor = "#221b33"
+textColor = "#ece7f6"
+
+[theme.designs.neon]
+label = "Neon"
+description = "Glowing outlines and monospace headings"
+css = "ui/neon.css"
+headingFont = "monospace"
+baseRadius = "6px"
+strokeWidth = 2.5
+
+[elements.rating]
+js = "ui/rating.js"
+css = "ui/rating.css"

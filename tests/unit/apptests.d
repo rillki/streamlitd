@@ -600,3 +600,61 @@ unittest
 	at.run();
 	assert(at.messages("page_config")[0]["icon"].get!string.startsWith("_media/"));
 }
+
+// ---------------------------------------------------------------- custom elements and widgets
+
+struct Pick { string color; int n; }
+
+unittest
+{
+	import std.exception : assertThrown;
+	// the browser code is irrelevant here: AppTest talks to the session directly
+	registerElement("t-stars", js: `StreamlitD.registerElement("t-stars", { render() {} });`);
+	registerElement("t-badge", js: `StreamlitD.registerElement("t-badge", { render() {} });`, css: ".t-badge{}");
+	int changes;
+	bool useUnknown;
+	auto at = new AppTest((St st) {
+		st.customElement("t-badge", Json(["text": Json("beta")]));
+		auto stars = st.customWidget!int("t-stars", "Stars", 3, Json(["max": Json(5)]), key: "stars",
+			onChange: () { changes++; });
+		auto pick = st.customWidget!Pick("t-stars", "Pick", Pick("red", 1));
+		auto go = st.customWidget!string("t-stars", "Go", null, trigger: true);
+		auto f = st.form("f");
+		auto inForm = f.customWidget!int("t-stars", "In form", 0);
+		f.formSubmitButton("Send");
+		st.write("v", stars, pick.color, pick.n, go.length ? go : "-", inForm);
+		if (useUnknown)
+			st.customElement("t-nope");
+	}).run();
+	assert(at.markdowns == ["v `3` red `1` - `0`"], at.markdowns.to!string);
+	auto badge = at.customElements("t-badge");
+	assert(badge.length == 1 && badge[0]["props"]["text"].get!string == "beta" && badge[0]["id"].type == Json.Type.undefined);
+	auto w = at.widget("custom", "Stars");
+	assert(w["element"].get!string == "t-stars" && w["value"].get!int == 3 && w["props"]["max"].get!int == 5);
+	assert(at.customElements("t-stars").length == 4);
+
+	// a value from the browser, decoded into T; onChange and session state follow
+	at.setValue("custom", "Stars", Json(5)).run();
+	assert(at.markdowns[0].startsWith("v `5`") && changes == 1 && at.sess.session.get!int("stars") == 5);
+	at.setValue("custom", "Pick", parseJsonString(`{"color":"blue","n":2}`)).run();
+	assert(at.markdowns[0].canFind("blue `2`"), at.markdowns.to!string);
+	// a value that does not decode falls back to the default
+	at.setValue("custom", "Stars", Json("lots")).run();
+	assert(at.markdowns[0].startsWith("v `3`"), at.markdowns.to!string);
+	// trigger widgets return the value for the triggering run only
+	at.sess.requestRerun(null, at.widgetId("custom", "Go"), Json("pressed"));
+	at.run();
+	assert(at.markdowns[0].canFind("pressed"), at.markdowns.to!string);
+	at.click("Go", "custom").run(); // click() sends `true`, which is not a string: default
+	assert(at.markdowns[0].canFind(" - "), at.markdowns.to!string);
+	at.run();
+	assert(at.markdowns[0].canFind(" - "), at.markdowns.to!string);
+	// in a form: only on submit
+	at.submitForm("Send", [at.widgetId("custom", "In form"): Json(7)]).run();
+	assert(at.markdowns[0].endsWith("`7`"), at.markdowns.to!string);
+	// unregistered names fail loudly
+	useUnknown = true;
+	at.run();
+	assert(at.exceptions.length == 1 && at.exceptions[0]["message"].get!string.canFind("t-nope"));
+	assertThrown(registerElement("t-stars", js: "x"));
+}

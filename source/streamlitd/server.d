@@ -24,6 +24,7 @@ import streamlitd.executor;
 import streamlitd.authserver;
 import streamlitd.delta : UserInfo;
 import streamlitd.openapi;
+import streamlitd.extensions : registerElement, buildExtensionAssets, ExtensionAssets;
 
 public import streamlitd.config : ServerOptions;
 import streamlitd.config;
@@ -46,6 +47,48 @@ private string assetContent(string name)
 enum maxClientMessage = 16 * 1024 * 1024;
 
 private AuthConfig g_auth;
+// app extensions (custom designs and elements): `_stcore/ext.css`, `_stcore/ext/<element>.js`
+private __gshared ExtensionAssets g_ext;
+
+/// Register the color schemes, designs and elements defined in config files, then close the
+/// registries and build the extension stylesheet/script. Throws on invalid definitions.
+private void setupExtensions(ref ServerOptions opts)
+{
+	import streamlitd.theme : freezeExtensions;
+	foreach (c; opts.schemes)
+		registerColorScheme(c.name, c.label, c.both, c.light, c.dark, c.base);
+	foreach (d; opts.designs)
+		registerDesign(d.style, null, d.cssPath);
+	foreach (e; opts.elements)
+		registerElement(e.name, null, null, e.jsPath, e.cssPath);
+	freezeExtensions();
+	g_ext = buildExtensionAssets();
+}
+
+private void serveExtension(HTTPServerRequest req, HTTPServerResponse res)
+{
+	import std.algorithm : endsWith;
+	immutable css = req.requestPath.toString.endsWith("/ext.css");
+	string content;
+	if (css)
+		content = g_ext.css;
+	else
+	{
+		auto file = req.params.get("file", "");
+		if (file.endsWith(".js"))
+			if (auto s = g_ext.script(file[0 .. $ - 3]))
+				content = s.js;
+	}
+	if (!content.length)
+	{
+		res.statusCode = 404;
+		return res.writeBody("not found");
+	}
+	// the page links them with ?v=<content hash>, so they can be cached for long
+	res.headers["Cache-Control"] = req.query.get("v", null) !is null ? "public, max-age=31536000, immutable" : "no-cache";
+	res.writeBody(content, css ? "text/css; charset=UTF-8" : "application/javascript; charset=UTF-8");
+}
+
 // app-wide favicon from --favicon / [server] favicon (empty = embedded default icons)
 private immutable(ubyte)[] g_favicon;
 private string g_faviconMime;
@@ -321,6 +364,18 @@ private void serveIndex(HTTPServerRequest req, HTTPServerResponse res)
 			`<link rel="icon" type="` ~ g_faviconMime ~ `" href="_stcore/favicon" data-default-icon>`)
 			.replace(`<link rel="icon" sizes="32x32" type="image/png" href="_stcore/favicon-32.png" data-default-icon>`, "")
 			.replace(`<link rel="apple-touch-icon" href="_stcore/apple-touch-icon.png">`, `<link rel="apple-touch-icon" href="_stcore/favicon">`);
+	}
+	if (g_ext.css.length)
+		html = html.replace(`<link rel="stylesheet" href="static/designs.css">`,
+			`<link rel="stylesheet" href="static/designs.css">
+<link rel="stylesheet" href="_stcore/ext.css?v=` ~ g_ext.cssHash ~ `">`);
+	if (g_ext.scripts.length)
+	{
+		// one file per element: a syntax error in one script does not stop the others
+		string tags;
+		foreach (s; g_ext.scripts)
+			tags ~= "\n<script src=\"_stcore/ext/" ~ s.name ~ ".js?v=" ~ s.hash ~ "\"></script>";
+		html = html.replace(`<script src="static/app.js"></script>`, `<script src="static/app.js"></script>` ~ tags);
 	}
 	res.writeBody(html, "text/html; charset=UTF-8");
 }
@@ -601,6 +656,13 @@ int serve(AppFn app, ServerOptions opts = ServerOptions.init, RoutesFn routes = 
 			return 1;
 		}
 	}
+	try
+		setupExtensions(opts);
+	catch (Exception e)
+	{
+		stderr.writeln("streamlitd: ", e.msg);
+		return 1;
+	}
 	if (opts.scriptThreads != 0)
 		startScriptWorkers(opts.scriptThreads < 0 ? 0 : cast(uint) opts.scriptThreads);
 
@@ -609,6 +671,8 @@ int serve(AppFn app, ServerOptions opts = ServerOptions.init, RoutesFn routes = 
 	foreach (f; ["/_stcore/favicon", "/_stcore/favicon.svg", "/_stcore/favicon-32.png", "/_stcore/apple-touch-icon.png", "/favicon.ico"])
 		router.get(f, &serveFavicon);
 	router.get("/_stcore/ws", &handleWSRequest);
+	router.get("/_stcore/ext.css", &serveExtension);
+	router.get("/_stcore/ext/:file", &serveExtension);
 	router.get("/static/*", &serveAsset);
 	router.get("/_media/:id", &serveMedia);
 	router.get("/_components/*", &serveComponent);
@@ -720,7 +784,8 @@ ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction 
 	bool readConfigFiles = true)
 {
 	import std.getopt;
-	import std.array : appender;
+	import std.algorithm : map;
+	import std.array : appender, array;
 	ServerOptions o;
 	// --config <file> must be known before the file is read
 	string configPath;
@@ -737,6 +802,9 @@ ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction 
 	applyEnv(o, env);
 
 	args = parseThemeOverrides(args, o.theme.overrides);
+	// schemes and designs from config files count too (they are registered when the server starts)
+	auto schemeNames = colorSchemeNames() ~ o.schemes.map!(c => c.name).array;
+	auto designNamesAll = designNames() ~ o.designs.map!(d => d.style.name).array;
 	bool noSwitch, hashPassword;
 	string unusedConfig;
 	auto help = getopt(args, config.passThrough,
@@ -749,9 +817,9 @@ ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction 
 		"idle-timeout", "Close sessions idle for N seconds (0 = never)", &o.idleTimeoutSeconds,
 		"max-upload-mb", "Maximum upload size in MB (default 200)", &o.maxUploadMB,
 		"script-threads", "Worker threads for app scripts (-1 = CPU cores, 0 = single-threaded)", &o.scriptThreads,
-		"color-scheme", "Color scheme: " ~ colorSchemeNames().join(", "), &o.theme.scheme,
+		"color-scheme", "Color scheme: " ~ schemeNames.join(", "), &o.theme.scheme,
 		"theme", "Old name of --color-scheme", &o.theme.scheme,
-		"design", "Design style: " ~ designNames().join(", "), &o.theme.design,
+		"design", "Design style: " ~ designNamesAll.join(", "), &o.theme.design,
 		"theme-mode", "auto | light | dark", &o.theme.mode,
 		"no-theme-switch", "Hide the viewer's appearance menu", &noSwitch,
 		"hash-password", "Read a password from stdin and print its hash for secrets.toml", &hashPassword,
@@ -777,7 +845,8 @@ ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction 
 		string mime;
 		loadFavicon(o.favicon, data, mime); // fail at startup, not on the first request
 	}
-	validateTheme(o.theme);
+	// schemes and designs from config files are registered when the server starts
+	validateTheme(o.theme, schemeNames, designNamesAll);
 	return o;
 }
 
@@ -820,6 +889,17 @@ unittest
 	assert(!parseServerArgs(["app", "--api-docs=false"], ["STREAMLITD_API_DOCS": "true"], act, helpText, false).api.docs);
 	parseServerArgs(["app", "--help"], null, act, helpText, false);
 	assert(helpText.canFind("--api-docs"));
+	// schemes and designs defined in the config file: listed in --help and accepted as defaults
+	{
+		import std.file : write, remove, tempDir;
+		import std.path : buildPath;
+		auto cfg = buildPath(tempDir, "streamlitd-help-test.toml");
+		write(cfg, "[theme]\nscheme = \"dusk\"\n[theme.schemes.dusk]\nprimaryColor = \"#7c3aed\"\n[theme.designs.neon]\nlabel = \"Neon\"\n");
+		scope (exit) remove(cfg);
+		auto oc = parseServerArgs(["app", "--config", cfg, "--help"], null, act, helpText, false);
+		assert(oc.theme.scheme == "dusk" && helpText.canFind("dusk") && helpText.canFind("neon"), helpText);
+		assert(parseServerArgs(["app", "--config", cfg, "--design", "neon"], null, act, helpText, false).theme.design == "neon");
+	}
 }
 
 /// Parse configuration (config.toml, `STREAMLITD_*` env vars, command line) and serve.

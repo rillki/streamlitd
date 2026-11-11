@@ -160,6 +160,7 @@ and `labelVisibility: "visible" | "hidden" | "collapsed"`.
 | `components.html(html, height=200)` | `st.components.html(html, height: 200)` |
 | `components.iframe(url, height=)` | `st.iframe(url, height:)` |
 | `c = components.declare_component("c", path="build")` / `c(arg=1, key="k", default=0)` | `auto c = declareComponent("c", path: "build");` / `c(st, args, key: "k", default_: Json(0))` |
+| (no equivalent: native widgets need a fork) | `registerElement("rating", js: ..., css: ...)` / `int v = st.customWidget!int("rating", "Stars", 3, key: "k")` ([Extending](extending.md)) |
 
 ## Theming and configuration
 
@@ -169,6 +170,7 @@ and `labelVisibility: "visible" | "hidden" | "collapsed"`.
 | `[theme] base="dark" primaryColor=...` | same keys, plus `scheme = "ocean"` and `design = "terminal"` (see [Theming](theming.md)) |
 | (no equivalent) | `st.setTheme(design: "win95", scheme: "paper", mode: "dark")`: [8 design styles × 8 color schemes](theming.md) |
 | `--theme.primaryColor=#f00` | `--theme.primaryColor=#f00` |
+| (no equivalent) | your own scheme/design: `registerColorScheme("acme", ...)`, `registerDesign(...)` or `[theme.schemes.acme]`, `[theme.designs.neon]` ([Extending](extending.md)) |
 | `--server.baseUrlPath=/x` | `--base-url-path /x` |
 
 ## JSON API endpoints (FastAPI)

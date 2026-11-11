@@ -12,6 +12,9 @@ Every design works with every color scheme in both modes: 8 × 8 × 2 = 128 comb
 Streamlit itself only offers Light/Dark plus custom colors in `config.toml`. streamlitd keeps
 that model (the same `[theme]` keys work) and adds the two named axes.
 
+Apps can add their own color schemes and design styles, in D code or in `config.toml`; they appear
+in the appearance menu next to the built-in ones. See [Extending streamlitd](extending.md).
+
 ## Design styles
 
 ![design styles, light](images/designs-light.png)
@@ -56,6 +59,9 @@ Some combinations:
 | `finance` | navy and green |
 | `solarized` | Solarized palettes, monospace headings |
 | `paper` | warm paper, serif type |
+
+For a company palette, [register your own scheme](extending.md#color-schemes) instead of
+overriding tokens one by one: it works in light and dark mode and appears in the viewer menu.
 
 ## Choosing design, scheme and mode
 
@@ -186,13 +192,17 @@ on air-gapped networks. If a font such as Tahoma or Roboto isn't installed, the 
 stack is used. To use a specific font family, install it on the client machines (or load it with
 `st.html("<style>@font-face{...}</style>")`) and set `font:`.
 
-## Writing your own design (contributors)
+## Writing your own design
 
-A design has two parts:
+A design has two parts: its data (a `DesignStyle`: name, label, description, forced fonts and
+radius, and chart tweaks) and a block of CSS rules, all scoped by `:root[data-design="<name>"]`.
 
-- a `DesignStyle` entry in `source/streamlitd/theme.d`: name, label, description, forced fonts
-  and radius, and chart tweaks;
-- a block of rules in `assets/designs.css`, all scoped by `:root[data-design="<name>"]`.
+- **In an app**, register it with `registerDesign` or `[theme.designs.<name>]`: see
+  [Extending streamlitd](extending.md#design-styles).
+- **In streamlitd itself** (contributors), add the `DesignStyle` to `builtinDesigns()` in
+  `source/streamlitd/theme.d` and the rules to `assets/designs.css`.
+
+Either way, the same conventions apply:
 
 Surfaces, text and borders must use only the scheme tokens (`--primary`, `--bg`, `--bg2`,
 `--text`, `--border`, `--widget-bg`, `--chart-N`, …) and `color-mix()`, so the design works with
@@ -200,8 +210,10 @@ every scheme and mode. The only fixed colors allowed are:
 
 - structural black and white (bevel shading, title-bar text);
 - small signature accents that are always blended with a scheme token, e.g.
-  `color-mix(in srgb, var(--primary) 35%, #ffb733)` for the xp hover glow. Add a preview card rule (`.dc-preview[data-design="<name>"]`), then run
-`python3 tools/gen_assets.py`, and add a probe for it to `tests/e2e/specs/themes.spec.js`.
+  `color-mix(in srgb, var(--primary) 35%, #ffb733)` for the xp hover glow.
+
+Add preview card rules (`.dc-preview[data-design="<name>"]`). For a built-in design, then run
+`python3 tools/gen_assets.py` and add a probe for it to `tests/e2e/specs/themes.spec.js`.
 
 For a one-off tweak in a single app, inject CSS scoped the same way:
 

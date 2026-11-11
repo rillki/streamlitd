@@ -26,6 +26,23 @@
     vegaPromise: null,
   };
 
+  // ------------------------------------------------------------------ app-defined elements
+  // App code (served as _stcore/ext.js, see docs/extending.md) registers renderers here:
+  //   StreamlitD.registerElement("rating", { render(box, el, api) { ...; return { update(el) {}, destroy() {} }; } });
+  const CUSTOM = Object.create(null);
+  window.StreamlitD = Object.freeze({
+    version: 1,
+    registerElement(name, def) {
+      if (typeof name !== "string" || !def || typeof def.render !== "function")
+        throw new Error("usage: StreamlitD.registerElement(name, { render(box, el, api) { ... } })");
+      CUSTOM[name] = def;
+      // elements that arrived before their renderer: draw them now
+      for (const k in S.roots) forEachNode(S.roots[k], (n) => {
+        if (n.customMissing && n.el && n.el.element === name) { const el = n.el; n.el = { kind: "x" }; renderInto(n, el); }
+      });
+    },
+  });
+
   const $ = (sel, root) => (root || document).querySelector(sel);
   function h(tag, attrs, ...children) {
     const e = document.createElement(tag);
@@ -403,8 +420,9 @@
       node.wasRenderedThisRun = S.runId;
       return;
     }
-    // charts and custom components update in place (a component keeps its iframe and state)
-    if (sameKind && (el.kind === "vega_lite" || el.kind === "plotly" || el.kind === "component") && node.update) {
+    // charts, components and custom elements update in place (a component keeps its iframe and state)
+    if (sameKind && (el.kind === "vega_lite" || el.kind === "plotly" || el.kind === "component"
+      || (el.kind === "custom" && old.element === el.element)) && node.update) {
       node.update(el);
       node.el = el;
       return;
@@ -415,6 +433,7 @@
     if (node.destroy) node.destroy();
     node.children = [];
     node.update = null; node.destroy = null; node.containerFor = null; node.inner = null;
+    node.rerenderTheme = null; node.customMissing = false;
     node.wrap.innerHTML = "";
     node.wrap.dataset.kind = el.kind === "block" ? "block-" + el.block : el.kind;
     node.el = el;
@@ -637,6 +656,40 @@
   // ------------------------------------------------------------------ elements
   const RENDERERS = {
     empty() {},
+
+    // st.customElement / st.customWidget: drawn by the renderer the app registered
+    custom(node, el) {
+      const def = CUSTOM[el.element];
+      const box = el.id ? widgetBox(node, el, "custom-widget") : node.wrap.appendChild(h("div", { class: "custom-element" }));
+      box.dataset.testid = "st-custom-" + el.element;
+      box.dataset.element = el.element;
+      if (!def) {
+        node.customMissing = true;
+        box.appendChild(h("div", { class: "alert alert-error", role: "alert", "data-testid": "st-custom-missing",
+          text: `Custom element "${el.element}" has no renderer: its script did not load, failed, or did not call ` +
+            `StreamlitD.registerElement("${el.element}", ...). See the browser console.` }));
+        return;
+      }
+      let cur = el;
+      const themeFns = [];
+      const root = document.documentElement;
+      const needWidget = (what) => { if (!cur.id) throw new Error(`api.${what}: "${cur.element}" is not a widget (use st.customWidget)`); };
+      const api = {
+        setValue(v) { needWidget("setValue"); widgetChanged(cur, v === undefined ? null : v); },
+        trigger(v) { needWidget("trigger"); triggerWidget(cur, v); },
+        label(forId) { return labelEl(cur, forId); },
+        markdown(text) { return mdInline(text || ""); },
+        onTheme(fn) { themeFns.push(fn); },
+        get theme() {
+          return { mode: root.dataset.theme, scheme: root.dataset.scheme, design: root.dataset.design,
+            token: (name) => getComputedStyle(root).getPropertyValue(name).trim() };
+        },
+      };
+      const inst = def.render(box, el, api) || {};
+      if (typeof inst.update === "function") node.update = (e) => { cur = e; inst.update(e); };
+      if (typeof inst.destroy === "function") node.destroy = () => inst.destroy();
+      node.rerenderTheme = () => themeFns.forEach((fn) => { try { fn(api.theme); } catch (e) { console.error(e); } });
+    },
 
     heading(node, el) {
       const tag = "h" + (el.level || 1);

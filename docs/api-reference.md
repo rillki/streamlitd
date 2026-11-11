@@ -17,6 +17,7 @@ Optional parameters are usually passed by name: `st.slider("x", 0, 10, 5, step: 
 - [Media, files & downloads](#media-files--downloads)
 - [Navigation (multipage)](#navigation-multipage)
 - [Custom components](#custom-components)
+- [Custom elements & widgets](#custom-elements--widgets)
 - [App control, page config, themes, auth (`St` core)](#app-control-page-config-themes-auth-st-core)
 - [Session state (`st.session`)](#session-state-stsession)
 - [DataFrame](#dataframe)
@@ -709,6 +710,51 @@ Json customComponent(string name, Json args, string key, Json default_, int heig
 ```
 Render a declared component (prefer `Component.opCall`).
 
+## Custom elements & widgets
+
+Source: [`source/streamlitd/extensions.d`](../source/streamlitd/extensions.d)
+
+See [Extending streamlitd](extending.md).
+
+#### `struct CustomElement`
+A registered custom element: its browser code and styles.
+
+```d
+void registerElement(string name, string js = null, string css = null, string jsPath = null, string cssPath = null)
+```
+Register a custom element or widget: `js` (or the file `jsPath`) renders it in the browser, `css` (or `cssPath`) styles it. Use it in the app with `st.customElement(name, props)` or `st.customWidget!T(name, label, default_, ...)`. Call it before the server starts, e.g. in `shared static this()`; `[elements.<name>]` in config.toml does the same with file paths.
+
+```d
+bool isElementRegistered(string name)
+```
+True if `name` was registered with `registerElement`.
+
+```d
+string[] elementNames()
+```
+Names of all registered custom elements.
+
+#### `struct ElementScript`
+One element's script, served at `_stcore/ext/<name>.js`.
+
+#### `struct ExtensionAssets`
+The extension files: one stylesheet (`_stcore/ext.css`, empty = none) and one script per element. Separate scripts keep a syntax error in one element from stopping the others.
+
+```d
+const(ElementScript)* script(string name) const
+```
+The script of element `name`, or null.
+
+```d
+void customElement(string name, Json props = Json.emptyObject)
+```
+Render a registered custom element that shows something but has no value. `props` reaches its renderer as `el.props`.
+
+```d
+T customWidget(T)(string name, string label, T default_, Json props = Json.emptyObject, string key = null, void delegate() onChange = null, bool disabled = false, string help = null, string labelVisibility = "visible", bool trigger = false)
+```
+Render a registered custom widget and return its value: `default_` until the browser sends one with `api.setValue(v)`. The value is decoded into `T` on the server; anything that does not decode gives `default_`. Works with `key`, `st.session`, `onChange`, forms and fragments. `trigger: true` makes a button-like widget: `api.trigger(v)` returns `v` for that one run only. Always give `T` explicitly: `st.customWidget!int("rating", "Stars", 3, key: "r")`.
+
 ## App control, page config, themes, auth (`St` core)
 
 Source: [`source/streamlitd/delta.d`](../source/streamlitd/delta.d)
@@ -1291,7 +1337,12 @@ A design style: how the UI is shaped. Colors always come from the color scheme.
 ```d
 DesignStyle[] designStyles()
 ```
-All design styles, in menu order. The first one is the default.
+All design styles, in menu order: the built-in ones (the first is the default), then the app's own (`registerDesign`, `[theme.designs.<name>]`).
+
+```d
+DesignStyle[] builtinDesigns()
+```
+The design styles that ship with streamlitd.
 
 ```d
 string[] designNames()
@@ -1314,7 +1365,12 @@ A named color scheme (palette), with light and dark variants.
 ```d
 ThemePreset[] themePresets()
 ```
-All presets, in menu order. The first one is the default.
+All color schemes, in menu order: the built-in ones (the first is the default), then the app's own (`registerColorScheme`, `[theme.schemes.<name>]`).
+
+```d
+ThemePreset[] builtinPresets()
+```
+The color schemes that ship with streamlitd.
 
 ```d
 string[] colorSchemeNames()
@@ -1332,9 +1388,19 @@ const(ThemePreset)* findPreset(string name)
 Look up a preset; returns null if unknown.
 
 ```d
-void validateTheme(const Theme t)
+void validateTheme(const Theme t, const string[] moreSchemes = null, const string[] moreDesigns = null)
 ```
-Validate a theme; throws on unknown preset/mode.
+Validate a theme; throws on unknown preset/mode. `moreSchemes`/`moreDesigns` are names that will be registered when the server starts (from `config.toml`).
+
+```d
+void registerColorScheme(string name, string label = null, ThemeTokens both = ThemeTokens.init, ThemeTokens light = ThemeTokens.init, ThemeTokens dark = ThemeTokens.init, string base = "streamlit")
+```
+Add a color scheme to the viewer menu, `Theme(...)`, `[theme] scheme` and `--color-scheme`.  Tokens not given come from the `base` scheme. `both` applies to light and dark mode; `light` and `dark` win over it. Colors are `#rgb` or `#rrggbb`. `linkColor` follows `primaryColor` unless it is set. Call it before the server starts, e.g. in `shared static this()`:  ThemeTokens acme; acme.primaryColor = "#0055aa"; registerColorScheme("acme", "Acme Corp", both: acme);
+
+```d
+void registerDesign(DesignStyle style, string css = null, string cssPath = null)
+```
+Add a design style. `css` (or the file `cssPath`) holds its rules, each scoped by `:root[data-design="<name>"]` (and `.dc-preview[data-design="<name>"]` for its card in the appearance menu); see docs/theming.md. Call it before the server starts.
 
 ```d
 Json presetsJson()
@@ -1352,6 +1418,15 @@ Source: [`source/streamlitd/config.d`](../source/streamlitd/config.d)
 
 #### `struct ApiDocsOptions`
 OpenAPI schema and Swagger UI for the app's API endpoints (`[api]`, see docs/api-endpoints.md).
+
+#### `struct ColorSchemeConfig`
+A color scheme from `[theme.schemes.<name>]` (see `registerColorScheme`).
+
+#### `struct DesignConfig`
+A design style from `[theme.designs.<name>]` (see `registerDesign`).
+
+#### `struct ElementConfig`
+A custom element's browser files from `[elements.<name>]` (see `registerElement`).
 
 #### `struct ServerOptions`
 Server settings (see `serve`).
@@ -1527,6 +1602,11 @@ Run the app (applying pending updates) until no rerun is pending.
 Json[] elements(string kind = null)
 ```
 All elements of the last run, in document order (optionally of one kind).
+
+```d
+Json[] customElements(string name)
+```
+Custom elements and widgets of the last run (`st.customElement`, `st.customWidget`) named `name`.
 
 ```d
 Json widget(string kind, string label)

@@ -104,6 +104,12 @@ final class AppTest
 		return lastElements.filter!(e => e["kind"].get!string == kind).array;
 	}
 
+	/// Custom elements and widgets of the last run (`st.customElement`, `st.customWidget`) named `name`.
+	Json[] customElements(string name)
+	{
+		return elements("custom").filter!(e => e["element"].opt!string(null) == name).array;
+	}
+
 	/// Find a widget by kind and label.
 	Json widget(string kind, string label)
 	{

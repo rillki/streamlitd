@@ -28,6 +28,30 @@ struct ApiDocsOptions
 	string version_ = "1.0.0";
 }
 
+/// A color scheme from `[theme.schemes.<name>]` (see `registerColorScheme`).
+struct ColorSchemeConfig
+{
+	string name;
+	string label;
+	string base = "streamlit";
+	ThemeTokens both, light, dark;
+}
+
+/// A design style from `[theme.designs.<name>]` (see `registerDesign`).
+struct DesignConfig
+{
+	DesignStyle style;
+	string cssPath;
+}
+
+/// A custom element's browser files from `[elements.<name>]` (see `registerElement`).
+struct ElementConfig
+{
+	string name;
+	string jsPath;
+	string cssPath;
+}
+
 /// Server settings (see `serve`).
 struct ServerOptions
 {
@@ -62,6 +86,12 @@ struct ServerOptions
 	Json auth;
 	/// OpenAPI / Swagger UI settings (`[api]`).
 	ApiDocsOptions api;
+	/// Color schemes, design styles and elements defined in config files; `serve` registers them.
+	ColorSchemeConfig[] schemes;
+	/// ditto
+	DesignConfig[] designs;
+	/// ditto
+	ElementConfig[] elements;
 }
 
 /// Config files searched, lowest priority first.
@@ -130,6 +160,14 @@ string[] applyConfig(ref ServerOptions o, Json cfg)
 				case "mode": o.theme.mode = v.get!string; break;
 				case "base": o.theme.mode = v.get!string; break; // Streamlit's light/dark base
 				case "allowSwitch": o.allowThemeSwitch = v.get!bool; break;
+				case "schemes":
+					foreach (string name, def; v)
+						upsert(o.schemes, parseSchemeConfig(name, def, warnings));
+					break;
+				case "designs":
+					foreach (string name, def; v)
+						upsert(o.designs, parseDesignConfig(name, def, warnings));
+					break;
 				case "chartColors":
 					string[] cs;
 					foreach (e; v)
@@ -176,10 +214,122 @@ string[] applyConfig(ref ServerOptions o, Json cfg)
 		if (o.api.docsPath == o.api.specPath)
 			throw new Exception("[api] docsPath and specPath must differ");
 	}
+	auto els = cfg["elements"];
+	if (els.type == Json.Type.object)
+		foreach (string name, def; els)
+		{
+			ElementConfig e;
+			e.name = name;
+			if (def.type != Json.Type.object)
+				throw new Exception("[elements." ~ name ~ "] must be a table with js and/or css");
+			foreach (string k, v; def)
+				switch (k)
+				{
+					case "js": e.jsPath = v.get!string; break;
+					case "css": e.cssPath = v.get!string; break;
+					default: warnings ~= "ignoring unsupported [elements." ~ name ~ "] option '" ~ k ~ "'";
+				}
+			upsert(o.elements, e);
+		}
 	foreach (string sec, _; cfg)
-		if (!["server", "theme", "map", "auth", "api"].canFind(sec))
+		if (!["server", "theme", "map", "auth", "api", "elements"].canFind(sec))
 			warnings ~= "ignoring unsupported config section [" ~ sec ~ "]";
 	return warnings;
+}
+
+/// Replace the entry with the same name (a later config file wins) or append.
+private void upsert(T)(ref T[] list, T item)
+{
+	static if (is(T == DesignConfig))
+		auto name = item.style.name;
+	else
+		auto name = item.name;
+	foreach (ref x; list)
+	{
+		static if (is(T == DesignConfig))
+			auto n = x.style.name;
+		else
+			auto n = x.name;
+		if (n == name)
+		{
+			x = item;
+			return;
+		}
+	}
+	list ~= item;
+}
+
+/// Theme tokens from a config table (`[theme.schemes.x]`, `.light`, `.dark`); `skip` = other keys.
+private void parseTokens(Json tbl, ref ThemeTokens t, string where, ref string[] warnings, const string[] skip = null)
+{
+	foreach (string k, v; tbl)
+	{
+		if (skip.canFind(k))
+			continue;
+		switch (k)
+		{
+			case "chartColors":
+				t.chartColors = null;
+				foreach (e; v)
+					t.chartColors ~= e.get!string;
+				break;
+			case "font":
+			case "headingFont":
+			case "codeFont":
+				t.set(k, streamlitFont(v.get!string));
+				break;
+			default:
+				if (v.type == Json.Type.object || !t.set(k, v.type == Json.Type.string ? v.get!string : v.toString))
+					warnings ~= "ignoring unsupported " ~ where ~ " option '" ~ k ~ "'";
+		}
+	}
+}
+
+private ColorSchemeConfig parseSchemeConfig(string name, Json def, ref string[] warnings)
+{
+	auto where = "[theme.schemes." ~ name ~ "]";
+	if (def.type != Json.Type.object)
+		throw new Exception(where ~ " must be a table");
+	ColorSchemeConfig c;
+	c.name = name;
+	c.label = def["label"].opt!string(null);
+	c.base = def["base"].opt!string("streamlit");
+	parseTokens(def, c.both, where, warnings, ["label", "base", "light", "dark"]);
+	if (def["light"].type == Json.Type.object)
+		parseTokens(def["light"], c.light, "[theme.schemes." ~ name ~ ".light]", warnings);
+	if (def["dark"].type == Json.Type.object)
+		parseTokens(def["dark"], c.dark, "[theme.schemes." ~ name ~ ".dark]", warnings);
+	return c;
+}
+
+private DesignConfig parseDesignConfig(string name, Json def, ref string[] warnings)
+{
+	auto where = "[theme.designs." ~ name ~ "]";
+	if (def.type != Json.Type.object)
+		throw new Exception(where ~ " must be a table");
+	DesignConfig d;
+	d.style.name = name;
+	double num(Json v) { return v.type == Json.Type.int_ ? v.get!long : v.get!double; }
+	foreach (string k, v; def)
+		switch (k)
+		{
+			case "label": d.style.label = v.get!string; break;
+			case "description": d.style.description = v.get!string; break;
+			case "css": d.cssPath = v.get!string; break;
+			case "font": d.style.font = streamlitFont(v.get!string); break;
+			case "headingFont": d.style.headingFont = streamlitFont(v.get!string); break;
+			case "codeFont": d.style.codeFont = streamlitFont(v.get!string); break;
+			case "baseRadius": d.style.baseRadius = v.get!string; break;
+			case "strokeWidth": d.style.strokeWidth = num(v); break;
+			case "barRadius": d.style.barRadius = num(v); break;
+			case "gridDash":
+				foreach (e; v)
+					d.style.gridDash ~= num(e);
+				break;
+			default:
+				warnings ~= "ignoring unsupported " ~ where ~ " option '" ~ k ~ "'";
+		}
+	return d;
 }
 
 /// `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`.
@@ -312,6 +462,36 @@ primaryColor = "#123456"
 	assert(o.api.docs && o.api.specPath == "/spec.json");
 	import std.exception : assertThrown;
 	assertThrown(applyEnv(o, ["STREAMLITD_API_DOCS": "maybe"]));
+	// [theme.schemes.*], [theme.designs.*], [elements.*]
+	ServerOptions e;
+	w = applyConfig(e, parseToml(`
+[theme.schemes.acme]
+label = "Acme"
+primaryColor = "#0055aa"
+font = "serif"
+chartColors = ["#0055aa", "#ff8800"]
+bogus = 1
+[theme.schemes.acme.dark]
+backgroundColor = "#0b1220"
+[theme.designs.neon]
+label = "Neon"
+css = "neon.css"
+font = "monospace"
+strokeWidth = 3
+gridDash = [2, 3.5]
+[elements.rating]
+js = "rating.js"
+css = "rating.css"
+`));
+	assert(w.length == 1 && w[0].canFind("bogus"), w.to!string);
+	assert(e.schemes.length == 1 && e.schemes[0].label == "Acme" && e.schemes[0].base == "streamlit");
+	assert(e.schemes[0].both.primaryColor == "#0055aa" && e.schemes[0].both.font == fontSerif);
+	assert(e.schemes[0].both.chartColors.length == 2 && e.schemes[0].dark.backgroundColor == "#0b1220");
+	assert(e.designs.length == 1 && e.designs[0].cssPath == "neon.css" && e.designs[0].style.font == fontMono);
+	assert(e.designs[0].style.strokeWidth == 3 && e.designs[0].style.gridDash == [2.0, 3.5]);
+	assert(e.elements == [ElementConfig("rating", "rating.js", "rating.css")]);
+	applyConfig(e, parseToml("[theme.schemes.acme]\nlabel = \"Acme 2\"\n")); // a later file replaces it
+	assert(e.schemes.length == 1 && e.schemes[0].label == "Acme 2");
 	assertThrown(applyConfig(o, parseToml("[api]\ndocsPath = \"/x\"\nspecPath = \"/x\"\n")));
 	assert(normalizeBasePath("app/") == "/app");
 	assert(normalizeBasePath("/") == "");

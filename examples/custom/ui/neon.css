@@ -1,0 +1,10 @@
+/* The "neon" design: every rule is scoped to it, colors come only from the scheme tokens. */
+:root[data-design="neon"] .heading h1 { letter-spacing: .04em; text-shadow: 0 0 12px color-mix(in srgb, var(--primary) 60%, transparent); }
+:root[data-design="neon"] .st-btn { border: 1px solid var(--primary); box-shadow: 0 0 8px color-mix(in srgb, var(--primary) 45%, transparent); }
+:root[data-design="neon"] .st-btn:hover { box-shadow: 0 0 14px color-mix(in srgb, var(--primary) 70%, transparent); }
+:root[data-design="neon"] .form, :root[data-design="neon"] details.expander { border: 1px solid color-mix(in srgb, var(--primary) 55%, var(--border)); box-shadow: 0 0 10px color-mix(in srgb, var(--primary) 25%, transparent); }
+:root[data-design="neon"] .rating-star.on { text-shadow: 0 0 8px var(--primary); }
+
+/* its card in the appearance menu */
+.dc-preview[data-design="neon"] { border: 1px solid var(--primary); box-shadow: 0 0 6px color-mix(in srgb, var(--primary) 50%, transparent); }
+.dc-preview[data-design="neon"] .dc-btn { box-shadow: 0 0 5px var(--primary); }

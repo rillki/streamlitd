@@ -70,6 +70,8 @@ win95, XP, brutalist, material and glass, each usable with any color scheme:
   - Docker image, health endpoint
 - **Auth:** password users (PBKDF2) and OIDC (Google, Entra ID, Keycloak, …), `st.user`.
 - **Custom components** compatible with Streamlit's component protocol.
+- **Extensible:** add your own color schemes, design styles and native widgets, in D or in
+  `config.toml`: [Extending](docs/extending.md).
 - **JSON API endpoints** next to the UI (FastAPI-style typed REST interfaces via vibe.d), on the same
   port and login, with an optional generated **OpenAPI** document and **Swagger UI** at `/docs`:
   [API endpoints](docs/api-endpoints.md).
@@ -86,7 +88,7 @@ win95, XP, brutalist, material and glass, each usable with any color scheme:
 | [Core concepts](docs/concepts.md) | reruns, state, callbacks, forms, fragments, caching, threads |
 | [Layout & navigation](docs/layout-and-navigation.md) · [Data & charts](docs/data-and-charts.md) · [Theming](docs/theming.md) | guides |
 | [Configuration](docs/configuration.md) · [Deployment](docs/deployment.md) (Docker, nginx, systemd) · [Authentication](docs/authentication.md) | running in production |
-| [Custom components](docs/custom-components.md) · [JSON API endpoints](docs/api-endpoints.md) · [Testing](docs/testing.md) | extending and testing |
+| [Custom components](docs/custom-components.md) · [Extending](docs/extending.md) · [JSON API endpoints](docs/api-endpoints.md) · [Testing](docs/testing.md) | extending and testing |
 | [Porting from Python](docs/porting-from-python.md) · [Cheat sheet](docs/cheatsheet.md) · [API reference](docs/api-reference.md) | reference |
 | [Troubleshooting](docs/troubleshooting.md) · [Architecture](docs/architecture.md) | FAQ and internals |
 
@@ -100,7 +102,7 @@ win95, XP, brutalist, material and glass, each usable with any color scheme:
 ```
 source/streamlitd/   the library (server, session, St API, DataFrame, charts, auth, ...)
 assets/              frontend: index.html, app.js, style.css, vendor/ (bundled JS libraries)
-examples/            runnable apps: hello, widgets, data, multipage, themes, prod, fragments, extras, auth, tutorial, api
+examples/            runnable apps: hello, widgets, data, multipage, themes, prod, fragments, extras, auth, tutorial, api, custom
 docs/                documentation and screenshots
 tests/unit/          headless AppTest suites (dub test)
 tests/e2e/           Playwright end-to-end tests and the screenshot script

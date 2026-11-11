@@ -36,6 +36,20 @@ mode = "auto"                # --theme-mode: auto | light | dark   (Streamlit's 
 allowSwitch = true           # false = hide the viewer style menu (--no-theme-switch)
 # any theme token, see theming.md: primaryColor, backgroundColor, font, baseRadius, chartColors, ...
 
+[theme.schemes.acme]         # your own color scheme (see extending.md); also [theme.schemes.acme.light] / .dark
+label = "Acme Corp"
+base = "streamlit"           # tokens not given come from this scheme
+primaryColor = "#0055aa"     # any theme token, for both modes
+
+[theme.designs.neon]         # your own design style (see extending.md)
+label = "Neon"
+css = "styles/neon.css"      # rules scoped by :root[data-design="neon"]
+baseRadius = "6px"           # also font, headingFont, codeFont, strokeWidth, barRadius, gridDash
+
+[elements.rating]            # browser files of a native custom widget (st.customWidget!T("rating", ...))
+js = "ui/rating.js"
+css = "ui/rating.css"
+
 [map]
 tileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 attribution = "&copy; OpenStreetMap contributors"
@@ -54,6 +68,10 @@ version = "1.0.0"            # info.version
 `idleTimeout` frees the memory of abandoned tabs. If the tab is still open, the browser then
 reconnects automatically, but with a **fresh session**: widget values and `st.session` are lost.
 Set it well above your users' normal pauses, or leave it at 0.
+
+Color schemes, designs and elements defined in several config files are merged by name: a later
+file replaces the whole definition. They are registered when the server starts; an invalid color
+or a missing file stops the app with an error.
 
 Unknown keys and sections (for example Streamlit's `runOnSave` or `[browser]`) are ignored, with a
 warning at startup. An existing `.streamlit/config.toml` can stay as it is.

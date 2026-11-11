@@ -122,8 +122,10 @@ test("other example apps", async ({ browser }) => {
   test.setTimeout(240000);
   const findings = [];
   for (const design of ["streamlit", "terminal", "win95", "brutalist"]) for (const mode of ["light", "dark"]) {
-    for (const app of ["widgets", "data", "fragments", "hello"]) {
-      const page = await openWith(browser, app, { scheme: "streamlit", design, mode });
+    for (const app of ["widgets", "data", "fragments", "hello", "custom"]) {
+      // examples/custom starts with its own scheme "acme", and adds the "neon" design
+      const look = app === "custom" ? { scheme: "acme", basis: "acme/streamlit/auto" } : { scheme: "streamlit" };
+      const page = await openWith(browser, app, Object.assign(look, { design, mode }));
       findings.push(...(await audit(page, `${app}:${design}/${mode} / page`)));
       if (app === "widgets") for (const tab of ["Layout", "Forms", "Status"]) {
         await page.getByRole("tab", { name: tab }).click();
@@ -132,12 +134,18 @@ test("other example apps", async ({ browser }) => {
       await page.context().close();
     }
   }
+  // the app-defined design and config scheme of examples/custom
+  for (const mode of ["light", "dark"]) {
+    const page = await openWith(browser, "custom", { scheme: "dusk", design: "neon", mode, basis: "acme/streamlit/auto" });
+    findings.push(...(await audit(page, `custom:neon+dusk/${mode} / page`)));
+    await page.context().close();
+  }
   report("apps", findings);
   expect(findings, summary(findings)).toEqual([]);
 });
 
 test("no native browser pop-up controls anywhere", async ({ browser }) => {
-  for (const app of ["hello", "widgets", "data", "themes", "fragments", "multipage", "extras", "tutorial"]) {
+  for (const app of ["hello", "widgets", "data", "themes", "fragments", "multipage", "extras", "tutorial", "custom"]) {
     const page = await openWith(browser, app, { scheme: "streamlit", design: "streamlit", mode: "light" });
     const native = await page.evaluate(() => document.querySelectorAll("select, datalist, input[type=date], input[type=time], input[type=color], input[type=datetime-local], input[type=month], input[type=week]").length);
     expect(native, app).toBe(0);
