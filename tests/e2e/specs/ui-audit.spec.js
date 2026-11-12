@@ -9,12 +9,12 @@ const { audit } = require("./audit");
 const designs = ["streamlit", "terminal", "retro", "win95", "xp", "brutalist", "material", "glass"];
 const outDir = path.join(__dirname, "..", "test-results");
 
-async function openWith(browser, app, look, viewport) {
+async function openWith(browser, app, look, viewport, path) {
   const ctx = await browser.newContext({ viewport: viewport || { width: 1280, height: 800 } });
   await ctx.addInitScript((a) => localStorage.setItem("streamlitd-appearance", JSON.stringify(a)),
     Object.assign({ basis: "streamlit/streamlit/auto" }, look));
   const page = await ctx.newPage();
-  await page.goto(url(app));
+  await page.goto(url(app, path || "/"));
   await waitIdle(page, 1);
   await page.waitForTimeout(250);
   return page;
@@ -122,17 +122,49 @@ test("other example apps", async ({ browser }) => {
   test.setTimeout(240000);
   const findings = [];
   for (const design of ["streamlit", "terminal", "win95", "brutalist"]) for (const mode of ["light", "dark"]) {
-    for (const app of ["widgets", "data", "fragments", "hello", "custom"]) {
+    for (const app of ["widgets", "data", "fragments", "hello", "custom", "multipage"]) {
       // examples/custom starts with its own scheme "acme", and adds the "neon" design
       const look = app === "custom" ? { scheme: "acme", basis: "acme/streamlit/auto" } : { scheme: "streamlit" };
       const page = await openWith(browser, app, Object.assign(look, { design, mode }));
       findings.push(...(await audit(page, `${app}:${design}/${mode} / page`)));
-      if (app === "widgets") for (const tab of ["Layout", "Forms", "Status"]) {
+      if (app === "multipage") {
+        // the header bar with a section menu open
+        await page.getByTestId("st-nav-section").click();
+        findings.push(...(await audit(page, `${app}:${design}/${mode} / section menu`)));
+        // a report page: breadcrumbs, menu button (open), pagination
+        await page.getByRole("menuitem", { name: "Sales" }).click();
+        await page.waitForFunction(() => document.body.dataset.running === "0" && document.querySelector('[data-testid="st-breadcrumbs"]'));
+        await page.getByRole("button", { name: /Export/ }).click();
+        findings.push(...(await audit(page, `${app}:${design}/${mode} / report page, export menu`)));
+        await page.keyboard.press("Escape");
+      }
+      if (app === "widgets") for (const tab of ["Layout", "Forms", "Status", "More"]) {
         await page.getByRole("tab", { name: tab }).click();
         findings.push(...(await audit(page, `${app}:${design}/${mode} / tab ${tab}`)));
+        if (tab === "More") {
+          await page.getByRole("button", { name: /^Regions:/ }).click();
+          findings.push(...(await audit(page, `${app}:${design}/${mode} / tree select open`)));
+          await page.keyboard.press("Escape");
+          await page.locator('[data-testid="st-date_range_input"]').getByRole("button", { name: "Open calendar" }).click();
+          findings.push(...(await audit(page, `${app}:${design}/${mode} / date range calendar`)));
+          await page.keyboard.press("Escape");
+        }
       }
       await page.context().close();
     }
+  }
+  // the app shell and the extra elements in the other four designs too
+  for (const design of ["retro", "xp", "material", "glass"]) for (const mode of ["light", "dark"]) {
+    let page = await openWith(browser, "multipage", { scheme: "streamlit", design, mode }, null, "/sales");
+    await page.getByRole("button", { name: /Export/ }).click();
+    findings.push(...(await audit(page, `multipage:${design}/${mode} / report page, export menu`)));
+    await page.context().close();
+    page = await openWith(browser, "widgets", { scheme: "streamlit", design, mode });
+    await page.getByRole("tab", { name: "More" }).click();
+    findings.push(...(await audit(page, `widgets:${design}/${mode} / tab More`)));
+    await page.getByRole("button", { name: /^Regions:/ }).click();
+    findings.push(...(await audit(page, `widgets:${design}/${mode} / tree select open`)));
+    await page.context().close();
   }
   // the app-defined design and config scheme of examples/custom
   for (const mode of ["light", "dark"]) {

@@ -8,6 +8,10 @@ void app(St st)
 	st.write("Hello **" ~ u.name ~ "**" ~ (u.email.length ? " (" ~ u.email ~ ")" : "") ~ ", signed in via " ~ u.provider ~ ".");
 	if (st.button("Log out"))
 		st.logout();
+	// the user menu in the header bar: picture or initials, the app's items and "Log out"
+	auto picked = st.userMenu(["Profile", "-", "Help"]);
+	if (picked.length)
+		st.info("You picked **" ~ picked ~ "** in the user menu.");
 }
 
 /// A JSON endpoint behind the same login ([auth] required = true answers 401 to anonymous calls).

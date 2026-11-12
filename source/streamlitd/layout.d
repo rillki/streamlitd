@@ -12,6 +12,26 @@ mixin template LayoutElements()
 		return s;
 	}
 
+	/// `st.topbar`: the right side of the header bar, for small items such as buttons,
+	/// `menuButton` or `userMenu` (streamlitd only).
+	@property St topbar()
+	{
+		return new St(sess, [cast(int) RootContainer.topbar]);
+	}
+
+	/// `st.footer`: the area under the main content, on every page (streamlitd only).
+	@property St footer()
+	{
+		return new St(sess, [cast(int) RootContainer.footer]);
+	}
+
+	/// A card (streamlitd only): a framed box with an optional image (URL) or icon, a title and a
+	/// subtitle. Returns its body; put text, metrics and buttons in it. Use `st.columns` for a grid.
+	St card(string title = null, string subtitle = null, string image = null, string icon = null, string key = null)
+	{
+		return emitBlock("card", jo("title", title, "subtitle", subtitle, "image", image, "icon", icon, "key", key));
+	}
+
 	/// `st.container`. `height` > 0 makes it scrollable.
 	St container(bool border = false, int height = 0, string key = null)
 	{

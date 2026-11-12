@@ -57,6 +57,16 @@ struct Spinner
 	}
 }
 
+/// An event of `st.timeline`.
+struct TimelineItem
+{
+	string title;
+	string time;   /// shown next to the title, as given (e.g. "2026-11-12 09:30", "2 h ago")
+	string body;   /// Markdown
+	string icon;   /// an emoji or character in the marker (default: a dot)
+	string type;   /// marker color: null (primary), "info", "success", "warning" or "error"
+}
+
 /// Elements mixed into `St`.
 mixin template Elements()
 {
@@ -141,6 +151,89 @@ mixin template Elements()
 	void warning(string body_, string icon = null) { alert("warning", body_, icon); }
 	/// `st.error`
 	void error(string body_, string icon = null) { alert("error", body_, icon); }
+
+	/// A notice across the top of the page, above the main content (streamlitd only), e.g. planned
+	/// maintenance or "STAGING". `type`: "info", "success", "warning" or "error" (Markdown body).
+	/// With `dismissible`, the viewer can close it; it then stays closed in that browser tab until
+	/// its text changes, or, with a `key`, until the key changes (so fixing a typo does not show it
+	/// again). Call it once per run, like other elements.
+	void banner(string body_, string type = "info", bool dismissible = true, string key = null, string icon = null)
+	{
+		if (type != "info" && type != "success" && type != "warning" && type != "error")
+			throw new StreamlitAPIException(`banner() type must be "info", "success", "warning" or "error", not "` ~ type ~ `"`);
+		auto b = new St(sess, [cast(int) RootContainer.banner]);
+		b.emit(jo("kind", "banner", "type", type, "body", body_, "dismissible", dismissible, "icon", icon,
+			"key", key.length ? "k:" ~ key : hashHex(type ~ "\x01" ~ body_)));
+	}
+
+	/// A round picture or the initials of `name` (streamlitd only). `size`: "small", "medium" or "large".
+	void avatar(string name, string image = null, string size = "medium")
+	{
+		if (size != "small" && size != "medium" && size != "large")
+			throw new StreamlitAPIException(`avatar() size must be "small", "medium" or "large"`);
+		emit(jo("kind", "avatar", "name", name, "image", image, "size", size));
+	}
+
+	/// Labels and values of one record, in a two-column list (streamlitd only), e.g. a customer's
+	/// details. Values are Markdown.
+	void details(string[2][] rows)
+	{
+		auto a = Json.emptyArray;
+		foreach (r; rows)
+			a.appendArrayElement(Json([Json(r[0]), Json(r[1])])); // `~=` would splice the pair in
+		emit(jo("kind", "details", "rows", a));
+	}
+
+	/// ditto, from a JSON object: its keys are the labels, in alphabetical order (JSON objects keep
+	/// no order; use the `string[2][]` form for your own order). Non-string values are shown as JSON.
+	void details(Json record)
+	{
+		import std.algorithm : sort;
+		auto a = Json.emptyArray;
+		if (record.type != Json.Type.object)
+			throw new StreamlitAPIException("details() needs a JSON object (or label/value pairs)");
+		string[] keys;
+		foreach (string k, v; record)
+			keys ~= k;
+		foreach (k; keys.sort)
+		{
+			auto v = record[k];
+			a.appendArrayElement(Json([Json(k), Json(v.type == Json.Type.string ? v.get!string : v.toString)]));
+		}
+		emit(jo("kind", "details", "rows", a));
+	}
+
+	/// Progress through a sequence of steps (streamlitd only), e.g. a multi-step form. `current` is
+	/// the index of the current step (0-based); steps before it are shown as done, and
+	/// `current == steps.length` shows all as done. `orientation`: "horizontal" or "vertical".
+	void stepper(string[] steps, size_t current, string orientation = "horizontal")
+	{
+		if (orientation != "horizontal" && orientation != "vertical")
+			throw new StreamlitAPIException(`stepper() orientation must be "horizontal" or "vertical"`);
+		if (current > steps.length)
+			current = steps.length;
+		emit(jo("kind", "stepper", "steps", steps, "current", current, "orientation", orientation));
+	}
+
+	/// A placeholder that shows content is loading (streamlitd only): `lines` text lines, or a block
+	/// of `height` pixels. Typical use: `auto ph = st.empty(); ph.skeleton(); ...; ph.dataframe(df);`.
+	void skeleton(int lines = 3, int height = 0)
+	{
+		emit(jo("kind", "skeleton", "lines", lines < 1 ? 1 : lines, "height", height < 0 ? 0 : height));
+	}
+
+	/// A vertical list of events (streamlitd only), newest or oldest first as given.
+	void timeline(TimelineItem[] items)
+	{
+		auto a = Json.emptyArray;
+		foreach (it; items)
+		{
+			if (it.type.length && it.type != "info" && it.type != "success" && it.type != "warning" && it.type != "error")
+				throw new StreamlitAPIException(`timeline() item type must be "info", "success", "warning" or "error"`);
+			a ~= jo("title", it.title, "time", it.time, "body", it.body, "icon", it.icon, "type", it.type);
+		}
+		emit(jo("kind", "timeline", "items", a));
+	}
 
 	/// `st.exception`
 	void exception(Throwable e)

@@ -106,6 +106,7 @@ The login flow uses the OIDC **authorization code** flow:
 | `st.user.claims` | all stored claims as `Json` |
 | `st.login()` / `st.login("google")` | go to the login page / straight to a provider |
 | `st.logout()` | clear the cookie (and go back to the login page if `required`) |
+| `st.userMenu(["Profile", "-", "Help"])` | the user's picture or initials and name in the header bar, with your items and **Log out**; returns the picked item ([Layout](layout-and-navigation.md#user-menu)) |
 
 Without `required = true`, the app is public, and you decide what needs a login:
 

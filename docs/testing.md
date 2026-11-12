@@ -51,7 +51,7 @@ fragments and dialogs behave as in the browser.
 | `.chat(message)` | submit the chat input |
 | `.elements(kind)` | elements of the last run in page order, as `Json` (`heading`, `markdown`, `alert`, `metric`, `dataframe`, `block`, …) |
 | `.texts(kind)`, `.markdowns`, `.headings`, `.alerts` | text bodies of an element kind |
-| `.widget(kind, label)` | the widget element (`["value"]`, `["options"]`, …) |
+| `.widget(kind, label)` | the widget element (`["value"]`, `["options"]`, …); kinds include `menu_button`, `pagination`, `tags_input`, `tree_select`, `date_range_input`, `user_menu` |
 | `.customElements(name)` | the custom elements and widgets named `name` (`st.customElement`, `st.customWidget`; see [Extending](extending.md)) |
 | `.exceptions` | errors shown in the page |
 | `.messages(type)` | other messages of the last run (`toast`, `navigation`, `set_theme`, …) |
@@ -111,7 +111,9 @@ Comboboxes are `getByRole("combobox", { name })`, their options `#stPopups [role
 ### UI audit
 
 `tests/e2e/specs/ui-audit.spec.js` opens the design gallery in every design style × light/dark (plus three
-other color schemes, a 390 px phone viewport and the other example apps). In each state it checks:
+other color schemes, a 390 px phone viewport and the other example apps, including the top navigation with an
+open section menu, a report page with breadcrumbs, menu button and pagination, and the widgets' **More** tab
+with the tree select and the date-range calendar open). In each state it checks:
 
 - the settings panel, every pop-up type, and the dialog;
 - elements clipped by an `overflow` ancestor;

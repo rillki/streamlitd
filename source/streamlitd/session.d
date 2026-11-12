@@ -148,6 +148,8 @@ final class AppSession
 	string[string] queryParams;
 	string pagePath;
 	package string[] navPagePaths;
+	/// Breadcrumb trail of the current page from `st.navigation` ([{label, urlPath}]), for `st.breadcrumbs()`.
+	package Json navCrumbs;
 
 	/// The logged-in user (`st.user`), or `Json(null)`. Set from the auth cookie on connect.
 	Json user;
@@ -438,6 +440,7 @@ final class AppSession
 		{
 			mediaRefs = null;
 			newFragments = null;
+			navCrumbs = Json.undefined;
 			appAllowSwitch = true;
 			pageConfigSent = false;
 			chatInputUsed = false;

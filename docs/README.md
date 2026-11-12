@@ -14,7 +14,8 @@ every interaction. You get a single self-contained binary that serves the web UI
 
 | Guide | What it covers |
 |---|---|
-| [Layout & navigation](layout-and-navigation.md) | sidebar, columns, tabs, expanders, forms, dialogs, status, multipage apps, query params |
+| [Layout & navigation](layout-and-navigation.md) | sidebar, columns, tabs, expanders, forms, dialogs, status, multipage apps (sidebar or top navigation, sections, breadcrumbs), header bar, footer, banners, user menu, query params |
+| [More elements and widgets](more-elements.md) | menu button, pagination, card, stepper, loading placeholder, timeline, avatar, details, tags, tree select, date range, copy button |
 | [Data & charts](data-and-charts.md) | `DataFrame`, tables, data editor, line/bar/area/scatter charts, Vega-Lite, Plotly, maps |
 | [Theming](theming.md) | 8 design styles (terminal, retro, win95, XP, …) × 8 color schemes × light/dark, custom colors and fonts |
 | [Configuration](configuration.md) | `config.toml`, environment variables, command-line flags, `secrets.toml` |
@@ -42,14 +43,14 @@ The [`examples/`](../examples) folder contains runnable apps. Each one is used b
 | Example | Shows |
 |---|---|
 | `hello` | the smallest app: text, input, button, session state, sidebar |
-| `widgets` | every input widget, layout containers, forms, status elements |
+| `widgets` | every input widget, layout containers, forms, status elements, and the extra elements (tab **More**) |
 | `data` | DataFrame, dataframe/table/data editor, all chart types, upload/download, images |
-| `multipage` | `st.navigation`, chat UI, query params |
+| `multipage` | top navigation with a section, breadcrumbs, header bar, banner, footer, menu button, pagination, chat UI, query params |
 | `themes` | design gallery: design styles, color schemes, modes and the viewer appearance menu |
 | `fragments` | `st.fragment`, auto-refresh, `st.dialog`, `st.status`, pills/segmented/feedback |
 | `extras` | LaTeX, code highlighting, Plotly, maps, custom components |
 | `prod` | `config.toml`, secrets, base URL path, worker threads |
-| `auth` | password and OIDC login |
+| `auth` | password and OIDC login, user menu in the header bar |
 | `tutorial` | the app built in the [tutorial](tutorial.md) |
 | `api` | a dashboard plus a JSON REST API on the same port ([API endpoints](api-endpoints.md)) |
 | `custom` | the app's own color schemes, design style and native widgets ([Extending](extending.md)) |

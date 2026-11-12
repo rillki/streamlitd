@@ -101,13 +101,18 @@ function inPageAudit() {
   }
 
   // 5. contrast (WCAG): 4.5:1 for normal text, 3:1 for large text
+  // any CSS color (rgb(), color(srgb ...) from color-mix(), oklab() during transitions, ...) -> [r, g, b, a]:
+  // let the browser convert it by painting one canvas pixel
+  const px = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  px.canvas.width = px.canvas.height = 1;
   const parse = (c) => {
-    const m = c.match(/[\d.]+/g);
-    if (!m) return [0, 0, 0, 1];
-    const v = m.map(Number);
-    // color(srgb r g b / a) uses 0..1 channels (e.g. results of color-mix())
-    if (/^color\(/.test(c)) return [v[0] * 255, v[1] * 255, v[2] * 255, v.length > 3 ? v[3] : 1];
-    return v.concat([1]).slice(0, 4);
+    if (!c || c === "transparent") return [0, 0, 0, 0];
+    px.clearRect(0, 0, 1, 1);
+    px.fillStyle = "#000";
+    px.fillStyle = c;
+    px.fillRect(0, 0, 1, 1);
+    const d = px.getImageData(0, 0, 1, 1).data;
+    return [d[0], d[1], d[2], d[3] / 255];
   };
   const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
   const blend = (top, bottom) => { const a = top[3]; return [0, 1, 2].map((i) => top[i] * a + bottom[i] * (1 - a)).concat([1]); };

@@ -304,7 +304,7 @@
     setRunning(false);
     if (status !== "rerun") {
       for (const r of runScopes()) prune(r);
-      if (!S.fragmentRun && !S.navSeen) { S.navVisible = false; $("#stNav").innerHTML = ""; }
+      if (!S.fragmentRun && !S.navSeen) { S.navVisible = false; S.topNav = false; $("#stNav").innerHTML = ""; $("#stTopNav").innerHTML = ""; }
     }
     for (const r of runScopes()) forEachNode(r, (n) => n.wrap.classList.remove("stale"));
     if (!S.fragmentRun && status !== "rerun" && !S.iconSetThisRun) setFavicon(S.navIcon || null);
@@ -498,6 +498,26 @@
 
   // ------------------------------------------------------------------ blocks
   const BLOCKS = {
+    // st.card: framed box (styled like a bordered container in every design) with image/icon, title, subtitle
+    card(node, el) {
+      const d = h("div", { class: "block-vertical bordered st-card", "data-testid": "st-card" });
+      const head = h("div", { class: "card-head" });
+      const draw = (e) => {
+        head.replaceChildren();
+        if (e.image) head.appendChild(h("img", { class: "card-image", src: e.image, alt: "" }));
+        const t = h("div", { class: "card-titles" });
+        if (e.title) t.appendChild(h("h3", { class: "card-title" }, e.icon ? h("span", { class: "card-icon", "aria-hidden": "true", text: e.icon + " " }) : null, h("span", { html: mdInline(e.title) })));
+        if (e.subtitle) t.appendChild(h("div", { class: "card-subtitle", html: mdInline(e.subtitle) }));
+        if (t.childNodes.length) head.appendChild(t);
+        head.hidden = !head.childNodes.length;
+      };
+      draw(el);
+      const body = h("div", { class: "block-vertical card-body" });
+      d.append(head, body);
+      node.wrap.appendChild(d);
+      node.inner = body;
+      node.update = draw;
+    },
     vertical(node, el) {
       const d = h("div", { class: "block-vertical" + (el.border ? " bordered" : "") + (el.height ? " scroll" : "") });
       if (el.height) d.style.height = el.height + "px";
@@ -654,8 +674,78 @@
   };
 
   // ------------------------------------------------------------------ elements
+  // initials (or a picture) in a circle; colors from the theme so contrast is always readable
+  function avatarEl(name, picture, size) {
+    const n = String(name || "").trim();
+    const initials = n.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "?";
+    const el = h("span", { class: "st-avatar st-avatar-" + (size || "medium"), "aria-hidden": "true" });
+    if (picture) {
+      const img = h("img", { src: picture, alt: "", referrerpolicy: "no-referrer" });
+      img.addEventListener("error", () => { img.remove(); el.textContent = initials; });
+      el.appendChild(img);
+    } else el.textContent = initials;
+    return el;
+  }
+
+  // Vega re-measures "container"-width charts only on a window resize event, so a chart whose
+  // column changes width (sidebar shown, scrollbar, design padding) gets one; once per frame
+  let vegaRefit = 0;
+  function refitVegaCharts() {
+    if (vegaRefit) return;
+    vegaRefit = requestAnimationFrame(() => { vegaRefit = 0; window.dispatchEvent(new Event("resize")); });
+  }
+
   const RENDERERS = {
     empty() {},
+
+    // st.banner: a notice above the main content; dismissal is remembered per tab (sessionStorage)
+    banner(node, el) {
+      const store = "streamlitd-banner:" + el.key;
+      let dismissed = false;
+      try { dismissed = sessionStorage.getItem(store) === "1"; } catch (e) {}
+      if (dismissed) { node.wrap.dataset.empty = "1"; return; }
+      delete node.wrap.dataset.empty;
+      const icons = { success: "✅", info: "ℹ️", warning: "⚠️", error: "❌" };
+      const d = h("div", { class: "alert alert-" + el.type + " st-banner", role: el.type === "error" || el.type === "warning" ? "alert" : "status",
+        "data-testid": "st-banner" }, h("span", { class: "alert-icon", "aria-hidden": "true", text: el.icon || icons[el.type] || "" }), mdEl(el.body));
+      if (el.dismissible) {
+        d.appendChild(h("button", { type: "button", class: "icon-btn banner-close", "aria-label": "Dismiss", title: "Dismiss", text: "×",
+          onclick: () => {
+            try { sessionStorage.setItem(store, "1"); } catch (e) {}
+            node.wrap.dataset.empty = "1";
+            d.remove();
+            updateSidebarVisibility();
+          } }));
+      }
+      node.wrap.appendChild(d);
+    },
+
+    // userMenu: the signed-in user in the header bar, with the app's items and "Log out"
+    user_menu(node, el) {
+      // nothing to show without [auth]: marked empty, so the header bar stays hidden
+      if (!el.auth) { node.wrap.dataset.empty = "1"; return; }
+      delete node.wrap.dataset.empty;
+      if (!el.loggedIn) {
+        node.wrap.appendChild(h("a", { class: "st-btn secondary user-login", href: "auth/login", "data-testid": "st-user-login", text: "Log in" }));
+        return;
+      }
+      const btn = h("button", { type: "button", class: "user-menu-btn", "data-testid": "st-user-menu", title: el.email || el.name || "",
+        "aria-label": "User menu: " + (el.name || "") },
+        avatarEl(el.name || el.email, el.picture, "small"), h("span", { class: "user-menu-name", text: el.name || "" }),
+        h("span", { class: "caret", "aria-hidden": "true", text: "▾" }));
+      const LOGOUT = "\u0000logout";
+      StUI.attachMenu(btn, () => {
+        const items = (el.items || []).map((label) => label === "-" ? { separator: true } : { label, value: label });
+        if (el.logout) {
+          if (items.length) items.push({ separator: true });
+          items.push({ label: "Log out", value: LOGOUT, icon: "⎋" });
+        }
+        if (el.email && el.email !== el.name) items.unshift({ heading: el.email });
+        return items;
+      }, (it) => { if (it.value === LOGOUT) location.href = "auth/logout"; else triggerWidget(el, it.value); },
+      { label: "User menu", alignRight: true });
+      node.wrap.appendChild(btn);
+    },
 
     // st.customElement / st.customWidget: drawn by the renderer the app registered
     custom(node, el) {
@@ -850,6 +940,112 @@
     },
     audio(node, el) { node.wrap.appendChild(h("audio", { controls: true, src: el.src, style: { width: "100%" } })); },
     video(node, el) { node.wrap.appendChild(h("video", { controls: true, src: el.src, style: { width: "100%" } })); },
+
+    // st.stepper: done / current / upcoming steps
+    stepper(node, el) {
+      const ol = h("ol", { class: "st-stepper " + (el.orientation || "horizontal"), "data-testid": "st-stepper" });
+      (el.steps || []).forEach((label, i) => {
+        const state = i < el.current ? "done" : i === el.current ? "current" : "upcoming";
+        ol.appendChild(h("li", { class: "step " + state, "aria-current": state === "current" ? "step" : null },
+          h("span", { class: "step-mark", "aria-hidden": "true", text: state === "done" ? "✓" : String(i + 1) }),
+          h("span", { class: "step-label", html: mdInline(label) }),
+          h("span", { class: "sr-only", text: state === "done" ? " (done)" : state === "upcoming" ? " (upcoming)" : "" })));
+      });
+      node.wrap.appendChild(ol);
+    },
+
+    // st.skeleton: a loading placeholder
+    skeleton(node, el) {
+      const d = h("div", { class: "st-skeleton", role: "status", "aria-label": "Loading", "data-testid": "st-skeleton" });
+      if (el.height) d.appendChild(h("span", { class: "sk-block", style: { height: el.height + "px" } }));
+      else for (let i = 0; i < (el.lines || 3); i++) d.appendChild(h("span", { class: "sk-line" }));
+      node.wrap.appendChild(d);
+    },
+
+    // st.timeline: events with a marker, title, time and Markdown body
+    timeline(node, el) {
+      const ol = h("ol", { class: "st-timeline", "data-testid": "st-timeline" });
+      for (const it of el.items || []) {
+        const li = h("li", { class: "tl-item" + (it.type ? " tl-" + it.type : "") },
+          h("span", { class: "tl-mark", "aria-hidden": "true", text: it.icon || "" }),
+          h("div", { class: "tl-content" },
+            h("div", { class: "tl-head" }, it.title ? h("span", { class: "tl-title", html: mdInline(it.title) }) : null,
+              it.time ? h("span", { class: "tl-time", text: it.time }) : null),
+            it.body ? mdEl(it.body) : null));
+        ol.appendChild(li);
+      }
+      node.wrap.appendChild(ol);
+    },
+
+    // st.menuButton: a button opening a menu of actions; the picked item reruns the app once
+    menu_button(node, el) {
+      const box = widgetBox(node, el);
+      const b = h("button", { class: btnClass(el) + " menu-button", disabled: el.disabled || null, type: "button", title: el.help || null },
+        btnContent(el), h("span", { class: "caret", "aria-hidden": "true", text: "▾" }));
+      StUI.attachMenu(b, () => (el.items || []).map((x) => x === "-" ? { separator: true } : { label: x, value: x }),
+        (it) => triggerWidget(el, it.value), { label: el.label });
+      box.appendChild(b);
+      node.update = () => {};
+    },
+
+    // st.breadcrumbs: links to app pages, the last item is the current position
+    breadcrumbs(node, el) {
+      const items = el.items || [];
+      const ol = h("ol");
+      items.forEach((it, i) => {
+        const last = i === items.length - 1;
+        let c;
+        if (!last && typeof it.urlPath === "string") {
+          c = h("a", { href: BASE + it.urlPath, text: it.label });
+          c.addEventListener("click", (ev) => {
+            if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1) return;
+            ev.preventDefault();
+            goToPage(it.urlPath);
+          });
+        } else c = h("span", { text: it.label, "aria-current": last ? "page" : null });
+        ol.appendChild(h("li", null, c));
+      });
+      node.wrap.appendChild(h("nav", { class: "breadcrumbs", "aria-label": "Breadcrumb", "data-testid": "st-breadcrumbs" }, ol));
+    },
+
+    // st.pagination: ‹ 1 … 4 5 6 … 20 ›, built from the segmented-control buttons every design styles
+    pagination(node, el) {
+      const box = widgetBox(node, el);
+      const row = h("nav", { class: "choice-group segmented pagination", "aria-label": el.label || "Pages" });
+      box.appendChild(row);
+      let value = el.value || 1;
+      const go = (p) => {
+        p = Math.max(1, Math.min(el.pages, p));
+        if (p === value) return;
+        value = p;
+        draw();
+        widgetChanged(el, p);
+      };
+      function draw() {
+        // the buttons are rebuilt: keep keyboard focus on the same one (or the current page)
+        const had = row.contains(document.activeElement) ? document.activeElement.getAttribute("aria-label") : null;
+        const n = el.pages;
+        const show = new Set([1, n, value - 1, value, value + 1].filter((p) => p >= 1 && p <= n));
+        const btn = (text, p, label, extra) => h("button", Object.assign({ type: "button", class: "choice", text, "aria-label": label,
+          disabled: el.disabled || null, onclick: () => go(p) }, extra || {}));
+        const parts = [btn("‹", value - 1, "Previous page", { disabled: el.disabled || value <= 1 || null })];
+        let prev = 0;
+        for (const p of Array.from(show).sort((a, b) => a - b)) {
+          if (p - prev > 1) parts.push(h("span", { class: "choice ellipsis", "aria-hidden": "true", text: "…" }));
+          parts.push(btn(String(p), p, "Page " + p, p === value ? { class: "choice active", "aria-current": "page" } : null));
+          prev = p;
+        }
+        parts.push(btn("›", value + 1, "Next page", { disabled: el.disabled || value >= n || null }));
+        row.replaceChildren(...parts);
+        if (had) {
+          const again = Array.from(row.querySelectorAll("button")).find((b) => b.getAttribute("aria-label") === had && !b.disabled)
+            || row.querySelector('[aria-current="page"]');
+          if (again) again.focus();
+        }
+      }
+      draw();
+      node.update = (e) => { el = e; value = e.value || 1; draw(); };
+    },
 
     page_link(node, el) {
       const a = h("a", { class: "page-link", href: /^https?:/.test(el.urlPath || "") ? el.urlPath : BASE + (el.urlPath || "") }, el.icon ? h("span", { text: el.icon }) : null, h("span", { html: mdInline(el.label) }));
@@ -1113,6 +1309,78 @@
       node.update = (e) => dp.setValue(e.value);
     },
 
+    date_range_input(node, el) {
+      const box = widgetBox(node, el);
+      const id = nextId();
+      box.appendChild(labelEl(el, id));
+      const dp = StUI.datePicker({ id, range: true, value: el.value, min: el.min, max: el.max, disabled: el.disabled, onChange: (v) => widgetChanged(el, v) });
+      box.appendChild(dp.el);
+      node.update = (e) => dp.setValue(e.value);
+    },
+
+    tags_input(node, el) {
+      const box = widgetBox(node, el);
+      const id = nextId();
+      box.appendChild(labelEl(el, id));
+      const ti = StUI.tagsInput({ id, label: el.label, value: el.value, suggestions: el.suggestions, max: el.maxTags, placeholder: el.placeholder,
+        disabled: el.disabled, onChange: (v) => widgetChanged(el, v) });
+      box.appendChild(ti.el);
+      node.update = (e) => { if (document.activeElement !== ti.input) ti.setValue(e.value); };
+    },
+
+    tree_select(node, el) {
+      const box = widgetBox(node, el);
+      const id = nextId();
+      box.appendChild(labelEl(el, id));
+      const ts = StUI.treeSelect({ id, label: el.label, nodes: el.nodes, value: el.value, multi: el.multi, placeholder: el.placeholder,
+        disabled: el.disabled, onChange: (v) => widgetChanged(el, v) });
+      box.appendChild(ts.el);
+      node.update = (e) => ts.setValue(e.value);
+    },
+
+    // st.copyButton: copies its text; no rerun
+    copy_button(node, el) {
+      const label = h("span", { text: el.label || "Copy" });
+      const b = h("button", { type: "button", class: "st-btn secondary copy-button", title: el.help || null, "data-testid": "st-copy-button" },
+        el.icon ? h("span", { "aria-hidden": "true", text: el.icon }) : null, label);
+      const live = h("span", { class: "sr-only", "aria-live": "polite" });
+      let timer = null;
+      b.addEventListener("click", async () => {
+        let ok = false;
+        try { await navigator.clipboard.writeText(el.text); ok = true; } catch (e) {
+          // plain http outside localhost has no clipboard API: fall back to a selected textarea
+          const ta = h("textarea", { style: { position: "fixed", opacity: "0", top: "0", left: "0" } });
+          ta.value = el.text;
+          document.body.appendChild(ta);
+          ta.select();
+          try { ok = document.execCommand("copy"); } catch (e2) {}
+          ta.remove();
+        }
+        label.textContent = ok ? "Copied ✓" : "Copy failed";
+        live.textContent = ok ? "Copied to the clipboard" : "Copying failed";
+        clearTimeout(timer);
+        timer = setTimeout(() => { label.textContent = el.label || "Copy"; live.textContent = ""; }, 1500);
+      });
+      node.wrap.appendChild(h("div", { class: "widget" }, b, live));
+    },
+
+    avatar(node, el) {
+      const a = avatarEl(el.name, el.image, el.size);
+      a.removeAttribute("aria-hidden");
+      a.setAttribute("role", "img");
+      a.setAttribute("aria-label", el.name || "");
+      a.title = el.name || "";
+      a.dataset.testid = "st-avatar";
+      node.wrap.appendChild(a);
+    },
+
+    // st.details: labels and values of one record
+    details(node, el) {
+      const dl = h("dl", { class: "st-details", "data-testid": "st-details" });
+      for (const [k, v] of el.rows || []) dl.append(h("dt", { html: mdInline(k) }), h("dd", { html: mdInline(v) }));
+      node.wrap.appendChild(dl);
+    },
+
     time_input(node, el) {
       const box = widgetBox(node, el);
       const id = nextId();
@@ -1343,9 +1611,12 @@
           if (view) try { view.finalize(); } catch (e) {}
           view = res ? res.view : null;
           if (!node.resizeObs) {
-            let w = div.clientWidth;
+            // start from 0: the chart was laid out at the width the container had when rendering
+            // started, which may differ by now (a scrollbar appeared, a design's padding applied);
+            // the observer's first notification then always fits it once
+            let w = 0;
             node.resizeObs = new ResizeObserver(() => {
-              if (div.clientWidth && div.clientWidth !== w && view) { w = div.clientWidth; try { view.resize().runAsync(); } catch (err) {} }
+              if (div.clientWidth && div.clientWidth !== w && view) { w = div.clientWidth; refitVegaCharts(); }
             });
             node.resizeObs.observe(div);
           }
@@ -1888,6 +2159,15 @@
     const b = S.roots[2];
     const hasBottom = b && b.children.some((c) => c && c.el && c.el.kind !== "empty");
     document.getElementById("stBottom").hidden = !hasBottom;
+    // header bar items, footer and banners: shown when they have content
+    const shown = (i) => { const r = S.roots[i]; return !!r && r.children.some((c) => c && c.el && c.el.kind !== "empty" && !c.wrap.dataset.empty); };
+    const topbar = shown(4);
+    $("#stRoot-4").hidden = !topbar;
+    $("#stRoot-5").hidden = !shown(5);
+    $("#stRoot-6").hidden = !shown(6);
+    const app = document.getElementById("stApp");
+    app.classList.toggle("has-topnav", !!S.topNav);
+    app.classList.toggle("has-header", !!S.topNav || topbar);
   }
 
   function applyPageConfig(m) {
@@ -1902,20 +2182,78 @@
     }
   }
 
+  function goToPage(urlPath) {
+    if (urlPath === S.page) return;
+    setPage(urlPath, true);
+    sendRerun({});
+  }
+  // consecutive pages with the same section form a group (pages without a section: their own groups)
+  function navGroups(pages) {
+    const groups = [];
+    for (const p of pages) {
+      const last = groups[groups.length - 1];
+      if (p.section && last && last.section === p.section) last.pages.push(p);
+      else groups.push({ section: p.section || null, pages: [p] });
+    }
+    return groups;
+  }
+  function navLink(p, current, cls, testid) {
+    const a = h("a", { href: BASE + p.urlPath, class: (cls || "") + (p.urlPath === current ? " active" : ""), "data-testid": testid,
+      "aria-current": p.urlPath === current ? "page" : null }, p.icon ? h("span", { text: p.icon, "aria-hidden": "true" }) : null, h("span", { text: p.title }));
+    a.addEventListener("click", (ev) => {
+      if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1) return; // open in a new tab
+      ev.preventDefault();
+      goToPage(p.urlPath);
+    });
+    return a;
+  }
+  const navMenuItem = (p, current) => ({ label: p.title, icon: p.icon || null, href: BASE + p.urlPath, value: p.urlPath, current: p.urlPath === current });
+
   function renderNav(m) {
     S.navSeen = true;
-    const cur = (m.pages || []).find((p) => p.urlPath === m.current);
+    const pages = m.pages || [];
+    const cur = pages.find((p) => p.urlPath === m.current);
     S.navIcon = cur && cur.icon ? cur.icon : null;
     const nav = $("#stNav");
     nav.innerHTML = "";
-    S.navVisible = m.position !== "hidden";
+    const top = $("#stTopNav");
+    top.innerHTML = "";
+    S.navVisible = m.position === "sidebar" || m.position === undefined;
+    S.topNav = m.position === "top";
+    const groups = navGroups(pages);
     if (S.navVisible) {
-      (m.pages || []).forEach((p) => {
-        const a = h("a", { href: BASE + p.urlPath, class: p.urlPath === m.current ? "active" : null, "data-testid": "st-nav-link" }, p.icon ? h("span", { text: p.icon }) : null, h("span", { text: p.title }));
-        a.addEventListener("click", (ev) => { ev.preventDefault(); if (p.urlPath === S.page) return; setPage(p.urlPath, true); sendRerun({}); });
-        nav.appendChild(a);
-      });
+      for (const g of groups) {
+        if (g.section) nav.appendChild(h("div", { class: "nav-section", "data-testid": "st-nav-section", text: g.section }));
+        for (const p of g.pages) nav.appendChild(navLink(p, m.current, "", "st-nav-link"));
+      }
     }
+    if (S.topNav) {
+      for (const g of groups) {
+        if (!g.section) { top.appendChild(navLink(g.pages[0], m.current, "top-link", "st-nav-link")); continue; }
+        const active = g.pages.some((p) => p.urlPath === m.current);
+        const b = h("button", { type: "button", class: "top-section" + (active ? " active" : ""), "data-testid": "st-nav-section" },
+          h("span", { text: g.section }), h("span", { class: "caret", "aria-hidden": "true", text: "▾" }));
+        StUI.attachMenu(b, () => g.pages.map((p) => navMenuItem(p, m.current)), (it) => goToPage(it.value), { label: g.section });
+        top.appendChild(b);
+      }
+      // narrow screens: everything in one menu, opened from the current page's title
+      const toggle = $("#stTopNavToggle");
+      toggle.replaceChildren(h("span", { text: (cur || pages[0] || {}).title || "Pages" }), h("span", { class: "caret", "aria-hidden": "true", text: "▾" }));
+      toggle.setAttribute("aria-label", "Pages: " + (((cur || pages[0]) || {}).title || ""));
+      if (!toggle.dataset.wired) {
+        toggle.dataset.wired = "1";
+        StUI.attachMenu(toggle, () => {
+          const items = [];
+          for (const g of navGroups(S.navPages || [])) {
+            if (g.section) items.push({ heading: g.section });
+            for (const p of g.pages) items.push(navMenuItem(p, S.navCurrent));
+          }
+          return items;
+        }, (it) => goToPage(it.value), { label: "Pages" });
+      }
+    }
+    S.navPages = pages;
+    S.navCurrent = m.current;
     if (!S.pageConfig.title && m.title) document.title = m.title;
     if (S.page !== m.current) setPage(m.current, false, true);
     updateSidebarVisibility();
@@ -1980,7 +2318,7 @@
     }
   }
 
-  for (const i of [0, 1, 2, 3]) S.roots[i] = makeRoot(i);
+  for (const i of [0, 1, 2, 3, 4, 5, 6]) S.roots[i] = makeRoot(i);
   // like Streamlit: on narrow screens the sidebar starts collapsed (it would cover the page)
   if (window.matchMedia && window.matchMedia("(max-width: 800px)").matches) document.getElementById("stApp").classList.add("sidebar-collapsed");
   $("#stRoot-0").dataset.title = document.title; // used by designs that draw a window title bar

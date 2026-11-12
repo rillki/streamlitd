@@ -124,6 +124,86 @@ window.StUI = (function () {
   }
   const matches = (label, q) => !q || label.toLowerCase().includes(q.toLowerCase());
 
+  // ------------------------------------------------------------------ menu
+  /** A menu of actions or links in a popup (ARIA menu). items: [{label, value, icon, hint, href,
+   *  current, disabled}] or {separator: true} / {heading: "Section"}. onPick(item) runs on click or
+   *  Enter; items with href also open in a new tab with Ctrl/Cmd/middle click.
+   *  Keys: ↑/↓/Home/End move, Enter/Space pick, Esc closes (focus back on the anchor), Tab closes,
+   *  a letter jumps to the next item starting with it. Returns the popup handle. */
+  function menu(anchor, items, onPick, opts) {
+    opts = opts || {};
+    const list = h("div", { class: "st-listbox st-menu", role: "menu", id: uid("st-menu"), "aria-label": opts.label || null });
+    const opts2 = [];
+    items.forEach((it) => {
+      if (it.separator) { list.appendChild(h("div", { class: "st-menu-sep", role: "separator" })); return; }
+      if (it.heading) { list.appendChild(h("div", { class: "st-menu-heading", role: "presentation", text: it.heading })); return; }
+      const o = h(it.href ? "a" : "div", {
+        class: "st-option" + (it.disabled ? " disabled" : "") + (it.current ? " current" : ""),
+        role: "menuitem", tabindex: "-1", href: it.href || null,
+        "aria-disabled": it.disabled ? "true" : null, "aria-current": it.current ? "page" : null,
+      },
+      it.icon ? h("span", { class: "st-menu-icon", "aria-hidden": "true", text: it.icon }) : null,
+      h("span", { class: "st-option-text" }, h("span", { class: "st-option-label", text: it.label }),
+        it.hint ? h("span", { class: "st-option-hint", text: it.hint }) : null));
+      o.addEventListener("click", (ev) => {
+        if (it.disabled) { ev.preventDefault(); return; }
+        if (it.href && (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1)) return; // new tab/window
+        ev.preventDefault();
+        handle.close();
+        onPick(it);
+      });
+      list.appendChild(o);
+      opts2.push({ el: o, it });
+    });
+    const enabled = () => opts2.filter((o) => !o.it.disabled);
+    // the focused item gets .active, so it is highlighted like the active option of a listbox in every design
+    list.addEventListener("focusin", (ev) => opts2.forEach((o) => o.el.classList.toggle("active", o.el === ev.target)));
+    const focusAt = (o) => { if (o) o.el.focus(); };
+    list.addEventListener("keydown", (ev) => {
+      const en = enabled();
+      const i = en.findIndex((o) => o.el === document.activeElement);
+      const k = ev.key;
+      if (k === "ArrowDown") focusAt(en[(i + 1) % en.length]);
+      else if (k === "ArrowUp") focusAt(en[(i - 1 + en.length) % en.length]);
+      else if (k === "Home") focusAt(en[0]);
+      else if (k === "End") focusAt(en[en.length - 1]);
+      else if (k === "Enter" || k === " ") { if (i >= 0) en[i].el.click(); }
+      else if (k === "Escape") { handle.close(); anchor.focus(); }
+      else if (k === "Tab") { handle.close(); return; }
+      else if (k.length === 1 && /\S/.test(k)) {
+        const lower = k.toLowerCase();
+        const from = en.slice(i + 1).concat(en.slice(0, i + 1));
+        focusAt(from.find((o) => o.it.label.toLowerCase().startsWith(lower)));
+      } else return;
+      ev.preventDefault();
+    });
+    anchor.setAttribute("aria-expanded", "true");
+    anchor.setAttribute("aria-controls", list.id);
+    const handle = openPopup(anchor, list, { className: "st-menu-popup", minWidth: opts.minWidth || 180, alignRight: opts.alignRight,
+      onClose: () => { anchor.setAttribute("aria-expanded", "false"); if (opts.onClose) opts.onClose(); } });
+    const en = enabled();
+    focusAt(en.find((o) => o.it.current) || en[0]);
+    return handle;
+  }
+
+  /** Make `button` open a menu: click or ↓/Enter/Space toggles it. getItems() is called on each
+   *  open, so the items can change. opts: label, alignRight, minWidth. */
+  function attachMenu(button, getItems, onPick, opts) {
+    let m = null;
+    button.setAttribute("aria-haspopup", "menu");
+    button.setAttribute("aria-expanded", "false");
+    const open = () => { m = menu(button, getItems(), onPick, opts); };
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      if (m && m.isOpen()) { m.close(); return; }
+      open();
+    });
+    button.addEventListener("keydown", (ev) => {
+      if (ev.key === "ArrowDown" && !(m && m.isOpen()) && !button.disabled) { ev.preventDefault(); open(); }
+    });
+    return { close: () => m && m.close(), isOpen: () => !!(m && m.isOpen()) };
+  }
+
   // ------------------------------------------------------------------ combobox
   /** Searchable single select. o: { id, label (accessible name), options: [{label, hint, swatches}],
    *  value (index | null), placeholder, disabled, onChange(index), className } */
@@ -287,6 +367,260 @@ window.StUI = (function () {
     return { el, input, setValue(v) { value = (v || []).slice(); drawChips(); if (popup) refresh(); }, value: () => value.slice() };
   }
 
+  // ------------------------------------------------------------------ tags input
+  /** Free-text tags shown as chips, with optional suggestions. Enter or comma adds the typed text
+   *  (or the highlighted suggestion), Backspace in an empty field removes the last tag.
+   *  o: { id, label, value: [str], suggestions: [str], max, placeholder, disabled, onChange([str]) } */
+  function tagsInput(o) {
+    let value = (o.value || []).slice();
+    const sugg = o.suggestions || [];
+    let popup = null, items = [], active = -1;
+    const listId = uid("st-lb");
+    const chips = h("span", { class: "st-chips" });
+    const input = h("input", {
+      class: "st-cb-input", id: o.id || null, autocomplete: "off", spellcheck: "false", "aria-label": o.label || null, disabled: o.disabled || null,
+      role: sugg.length ? "combobox" : null, "aria-expanded": sugg.length ? "false" : null, "aria-controls": sugg.length ? listId : null,
+      "aria-autocomplete": sugg.length ? "list" : null,
+    });
+    const el = h("div", { class: "st-combobox st-multi multiselect st-tags" + (o.disabled ? " disabled" : "") }, chips, input);
+    const list = h("div", { class: "st-listbox", role: "listbox", id: listId, "aria-label": o.label || null });
+    const full = () => o.max > 0 && value.length >= o.max;
+    const emit = () => { if (o.onChange) o.onChange(value.slice()); };
+    const close = () => { if (popup) popup.close(); };
+    function drawChips() {
+      chips.innerHTML = "";
+      value.forEach((t) => {
+        const x = h("button", { type: "button", title: "Remove", text: "×", "aria-label": "Remove " + t, disabled: o.disabled || null });
+        x.addEventListener("mousedown", (ev) => ev.preventDefault());
+        x.addEventListener("click", (ev) => { ev.stopPropagation(); value = value.filter((v) => v !== t); drawChips(); emit(); });
+        chips.appendChild(h("span", { class: "chip" }, h("span", { text: t }), x));
+      });
+      input.placeholder = value.length ? "" : (o.placeholder || "Add a tag");
+      input.title = full() ? "Maximum reached (" + o.max + ")" : "";
+      if (popup) popup.place();
+    }
+    function add(t) {
+      t = String(t || "").trim();
+      if (!t || value.includes(t) || full()) { input.value = ""; return; }
+      value = value.concat([t]);
+      input.value = "";
+      active = -1;
+      drawChips();
+      emit();
+      refresh();
+    }
+    function refresh() {
+      if (!sugg.length) return;
+      const q = input.value.trim();
+      items = sugg.filter((x) => !value.includes(x) && matches(x, q)).map((x) => ({ label: x, value: x }));
+      if (!items.length || full() || document.activeElement !== input) { close(); return; }
+      if (!popup) {
+        popup = openPopup(el, list, { className: "st-popup-list", nested: inPopup(el), onClose: () => { popup = null; input.setAttribute("aria-expanded", "false"); } });
+        input.setAttribute("aria-expanded", "true");
+      }
+      if (active >= items.length) active = items.length - 1;
+      renderList(list, items, active, (i) => add(items[i].value), "");
+      input.setAttribute("aria-activedescendant", active >= 0 ? listId + "-o" + active : "");
+      popup.place();
+    }
+    el.addEventListener("mousedown", (ev) => {
+      if (o.disabled || ev.target.closest("button") || ev.target === input) return;
+      ev.preventDefault();
+      input.focus();
+    });
+    input.addEventListener("focus", refresh);
+    input.addEventListener("input", () => {
+      if (input.value.includes(",")) { const parts = input.value.split(","); input.value = parts.pop(); parts.forEach(add); }
+      active = -1;
+      refresh();
+    });
+    input.addEventListener("keydown", (ev) => {
+      switch (ev.key) {
+        case "Enter": ev.preventDefault(); if (popup && active >= 0 && items[active]) add(items[active].value); else add(input.value); break;
+        case "ArrowDown": if (sugg.length) { ev.preventDefault(); active = Math.min(items.length - 1, active + 1); refresh(); } break;
+        case "ArrowUp": if (popup) { ev.preventDefault(); active = Math.max(-1, active - 1); refresh(); } break;
+        case "Escape": if (popup) { ev.preventDefault(); ev.stopPropagation(); close(); } break;
+        case "Backspace": if (!input.value && value.length) { value = value.slice(0, -1); drawChips(); emit(); } break;
+        case "Tab": if (input.value.trim()) add(input.value); close(); break;
+      }
+    });
+    input.addEventListener("blur", () => setTimeout(() => {
+      if (document.activeElement === input) return;
+      if (input.value.trim()) add(input.value);
+      close();
+    }, 120));
+    drawChips();
+    return { el, input, setValue(v) { value = (v || []).slice(); drawChips(); } };
+  }
+
+  // ------------------------------------------------------------------ tree select
+  /** Pick nodes of a tree in a popup with search. o: { id, label, nodes: [{id, label, children}],
+   *  value: [ids], multi, placeholder, disabled, onChange([ids]) }. Multi: checking a node checks
+   *  all of its descendants, and a node counts as checked when all its children are; the value is
+   *  committed when the popup closes. Single: picking a node commits and closes.
+   *  Keys: ↑/↓ move, → expand / first child, ← collapse / parent, Space or Enter pick, Esc close. */
+  function treeSelect(o) {
+    const multi = o.multi !== false;
+    const byId = new Map(), parentOf = new Map();
+    (function index(nodes, parent) {
+      for (const n of nodes || []) { byId.set(n.id, n); parentOf.set(n.id, parent); index(n.children, n.id); }
+    })(o.nodes, null);
+    let value = [], checked = new Set();
+    let popup = null, q = "", focusId = null;
+    const expanded = new Set();
+    const kids = (id) => (byId.get(id).children || []);
+    const descendants = (id) => { const r = []; (function walk(i) { for (const c of kids(i)) { r.push(c.id); walk(c.id); } })(id); return r; };
+    const state = (id) => {
+      const k = kids(id);
+      if (!k.length) return checked.has(id) ? "true" : "false";
+      const st = k.map((c) => state(c.id));
+      if (st.every((x) => x === "true")) return "true";
+      return st.some((x) => x !== "false") || checked.has(id) ? "mixed" : "false";
+    };
+    const normalize = () => {
+      // a parent is checked exactly when all its children are
+      const fix = (n) => { const k = n.children || []; if (!k.length) return checked.has(n.id); const all = k.map(fix).every(Boolean); if (all) checked.add(n.id); else checked.delete(n.id); return all; };
+      (o.nodes || []).forEach(fix);
+    };
+    // a picked parent means its whole subtree
+    function load(ids) {
+      ids = (ids || []).filter((id) => byId.has(id));
+      if (!multi) { value = ids.slice(0, 1); checked = new Set(value); return; }
+      checked = new Set();
+      for (const id of ids) { checked.add(id); descendants(id).forEach((x) => checked.add(x)); }
+      normalize();
+      value = Array.from(byId.keys()).filter((x) => checked.has(x));
+    }
+    load(o.value);
+    const field = h("button", { type: "button", class: "st-input st-tree-field", id: o.id || null, "aria-haspopup": "dialog", "aria-expanded": "false",
+      disabled: o.disabled || null });
+    const summary = h("span", { class: "st-tree-summary" });
+    field.append(summary, h("span", { class: "st-cb-chevron", "aria-hidden": "true" }));
+    const el = h("div", { class: "st-tree" + (o.disabled ? " disabled" : "") }, field);
+    function drawSummary() {
+      // show the top-most picked nodes
+      const tops = value.filter((id) => !value.includes(parentOf.get(id)));
+      const labels = tops.map((id) => byId.get(id).label);
+      summary.textContent = !labels.length ? (o.placeholder || "Choose") : labels.length > 3 ? labels.length + " selected" : labels.join(", ");
+      summary.classList.toggle("placeholder", !labels.length);
+      field.setAttribute("aria-label", (o.label || "") + ": " + (labels.length ? labels.join(", ") : "none selected"));
+    }
+    const matchesQ = (n) => !q || n.label.toLowerCase().includes(q.toLowerCase()) || (n.children || []).some(matchesQ);
+    function visibleRows() {
+      const rows = [];
+      (function walk(nodes, level) {
+        for (const n of nodes || []) {
+          if (!matchesQ(n)) continue;
+          rows.push({ n, level });
+          if ((n.children || []).length && (expanded.has(n.id) || q)) walk(n.children, level + 1);
+        }
+      })(o.nodes, 1);
+      return rows;
+    }
+    let tree = null;
+    function drawTree(keepFocus) {
+      const rows = visibleRows();
+      if (!rows.some((r) => r.n.id === focusId)) focusId = rows.length ? rows[0].n.id : null;
+      tree.replaceChildren(...rows.map(({ n, level }) => {
+        const hasKids = (n.children || []).length > 0;
+        const st = multi ? state(n.id) : null;
+        const row = h("div", {
+          class: "st-tree-row" + (!multi && value[0] === n.id ? " selected" : ""), role: "treeitem", "aria-level": String(level),
+          "aria-expanded": hasKids ? String(expanded.has(n.id) || !!q) : null, "aria-checked": multi ? st : null,
+          "aria-selected": multi ? null : String(value[0] === n.id), tabindex: n.id === focusId ? "0" : "-1", "data-id": n.id,
+          style: { paddingLeft: (level - 1) * 1.25 + 0.4 + "rem" },
+        },
+        h("span", { class: "st-tree-toggle", "aria-hidden": "true", text: hasKids ? (expanded.has(n.id) || q ? "▾" : "▸") : "" }),
+        multi ? h("span", { class: "st-tree-check " + st, "aria-hidden": "true", text: st === "true" ? "✓" : st === "mixed" ? "–" : "" }) : null,
+        h("span", { class: "st-tree-label", text: n.label }));
+        row.addEventListener("click", (ev) => {
+          focusId = n.id;
+          if (ev.target.classList.contains("st-tree-toggle") && hasKids) { toggleExpand(n.id); return; }
+          pick(n.id);
+        });
+        return row;
+      }));
+      if (!rows.length) tree.appendChild(h("div", { class: "st-noresults", text: "No results" }));
+      if (keepFocus) { const f = tree.querySelector('[tabindex="0"]'); if (f) f.focus(); }
+      if (popup) popup.place();
+    }
+    function toggleExpand(id, open) {
+      if (open === undefined ? !expanded.has(id) : open) expanded.add(id); else expanded.delete(id);
+      drawTree(true);
+    }
+    function pick(id) {
+      if (!multi) { value = [id]; drawSummary(); close(); field.focus(); if (o.onChange) o.onChange(value.slice()); return; }
+      const on = state(id) !== "true";
+      for (const x of [id].concat(descendants(id))) { if (on) checked.add(x); else checked.delete(x); }
+      normalize();
+      value = Array.from(byId.keys()).filter((x) => checked.has(x));
+      drawSummary();
+      drawTree(true);
+    }
+    let committed = value.slice();
+    function open() {
+      if (popup || o.disabled) return;
+      q = "";
+      for (const id of value) { let p = parentOf.get(id); while (p) { expanded.add(p); p = parentOf.get(p); } }
+      focusId = value[0] || null;
+      const search = h("input", { class: "st-input st-tree-search", type: "text", placeholder: "Search", autocomplete: "off", "aria-label": "Search " + (o.label || "") });
+      tree = h("div", { class: "st-tree-list", role: "tree", "aria-label": o.label || null, "aria-multiselectable": multi ? "true" : null });
+      const content = h("div", { class: "st-tree-pop" }, search, tree);
+      if (multi) {
+        const clear = h("button", { type: "button", class: "st-btn secondary", text: "Clear" });
+        const done = h("button", { type: "button", class: "st-btn primary", text: "Done" });
+        clear.addEventListener("click", () => { checked.clear(); value = []; drawSummary(); drawTree(false); });
+        done.addEventListener("click", () => { close(); field.focus(); });
+        content.appendChild(h("div", { class: "st-tree-actions" }, clear, done));
+      }
+      search.addEventListener("input", () => { q = search.value.trim(); drawTree(false); });
+      search.addEventListener("keydown", (ev) => {
+        if (ev.key === "ArrowDown") { ev.preventDefault(); const f = tree.querySelector('[tabindex="0"]'); if (f) f.focus(); }
+        else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); close(); field.focus(); }
+        else if (ev.key === "Enter") { ev.preventDefault(); if (focusId) pick(focusId); }
+      });
+      tree.addEventListener("keydown", onTreeKey);
+      // Esc anywhere in the popup (also on Clear/Done) closes it
+      content.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); close(); field.focus(); } });
+      popup = openPopup(el, content, { className: "st-popup-tree", role: "dialog", label: o.label || "Choose", minWidth: 260, nested: inPopup(el),
+        onClose: () => {
+          popup = null;
+          field.setAttribute("aria-expanded", "false");
+          if (multi && value.join("\u0001") !== committed.join("\u0001")) { committed = value.slice(); if (o.onChange) o.onChange(value.slice()); }
+        } });
+      field.setAttribute("aria-expanded", "true");
+      drawTree(false);
+      search.focus();
+    }
+    function onTreeKey(ev) {
+      const rows = visibleRows();
+      const i = rows.findIndex((r) => r.n.id === focusId);
+      if (i < 0) return;
+      const n = rows[i].n, hasKids = (n.children || []).length > 0, isOpen = expanded.has(n.id) || !!q;
+      const moveTo = (j) => { if (j >= 0 && j < rows.length) { focusId = rows[j].n.id; drawTree(true); } };
+      switch (ev.key) {
+        case "ArrowDown": moveTo(i + 1); break;
+        case "ArrowUp": if (i === 0) popup.pop.querySelector(".st-tree-search").focus(); else moveTo(i - 1); break;
+        case "Home": moveTo(0); break;
+        case "End": moveTo(rows.length - 1); break;
+        case "ArrowRight": if (hasKids && !isOpen) toggleExpand(n.id, true); else if (hasKids) moveTo(i + 1); break;
+        case "ArrowLeft": if (hasKids && isOpen && !q) toggleExpand(n.id, false); else { const p = parentOf.get(n.id); const j = rows.findIndex((r) => r.n.id === p); moveTo(j); } break;
+        case " ": case "Enter": pick(n.id); break;
+        case "Escape": close(); field.focus(); break;
+        default: return;
+      }
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+    function close() { if (popup) popup.close(); }
+    field.addEventListener("click", () => { if (popup) close(); else open(); });
+    field.addEventListener("keydown", (ev) => { if (ev.key === "ArrowDown") { ev.preventDefault(); open(); } });
+    drawSummary();
+    return { el, input: field, setValue(v) {
+      load(v); committed = value.slice(); drawSummary(); if (popup && tree) drawTree(false);
+    } };
+  }
+
   // ------------------------------------------------------------------ date picker
   const pad = (n) => String(n).padStart(2, "0");
   const iso = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
@@ -308,15 +642,29 @@ window.StUI = (function () {
 
   /** o: { id, label, value 'YYYY-MM-DD', min, max, disabled, onChange(str) } */
   function datePicker(o) {
-    let value = o.value || "";
+    // range mode (o.range): value is [start, end]; the first click picks the start, the second the end
+    const range = !!o.range;
+    let value = range ? (Array.isArray(o.value) ? o.value.slice() : []) : (o.value || "");
+    let pending = null;
+    const shown = () => range ? (value.length === 2 ? value[0] + " – " + value[1] : "") : value;
     const minD = parseIso(o.min), maxD = parseIso(o.max);
-    const input = h("input", { class: "st-input st-date-input", id: o.id || null, type: "text", inputmode: "numeric", placeholder: "YYYY-MM-DD",
+    const input = h("input", { class: "st-input st-date-input" + (range ? " st-date-range" : ""), id: o.id || null, type: "text", inputmode: "numeric",
+      placeholder: range ? "YYYY-MM-DD – YYYY-MM-DD" : "YYYY-MM-DD",
       autocomplete: "off", disabled: o.disabled || null, "aria-haspopup": "dialog", "aria-expanded": "false" });
     const btn = h("button", { type: "button", class: "st-picker-btn", "aria-label": "Open calendar", title: "Open calendar", disabled: o.disabled || null, text: "📅" });
     const el = h("div", { class: "st-picker st-date" + (o.disabled ? " disabled" : "") }, input, btn);
     let popup = null, view = null, focus = null;
     const inRange = (d) => (!minD || d >= minD) && (!maxD || d <= maxD);
-    const commit = (s) => { value = s; input.value = s; if (o.onChange) o.onChange(s); };
+    const commit = (s) => { value = s; input.value = shown(); if (o.onChange) o.onChange(s); };
+    function pick(s) {
+      if (!range) { commit(s); close(); input.focus(); return; }
+      if (!pending) { pending = s; focus = parseIso(s); rerender(true); return; }
+      const a = pending < s ? pending : s, b = pending < s ? s : pending;
+      pending = null;
+      commit([a, b]);
+      close();
+      input.focus();
+    }
     const fdw = firstDayOfWeek();
     const names = monthNames();
 
@@ -352,18 +700,21 @@ window.StUI = (function () {
           const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + r * 7 + c);
           const s = iso(d);
           const ok = inRange(d);
+          const sel = range ? (pending ? s === pending : s === value[0] || s === value[1]) : s === value;
+          const between = range && !pending && value.length === 2 && s > value[0] && s < value[1];
           const b = h("button", {
-            type: "button", role: "gridcell", class: "st-cal-day" + (d.getMonth() !== m ? " other" : "") + (s === today ? " today" : "") + (s === value ? " selected" : ""),
-            "aria-selected": s === value ? "true" : "false", "aria-label": d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }),
+            type: "button", role: "gridcell", class: "st-cal-day" + (d.getMonth() !== m ? " other" : "") + (s === today ? " today" : "") + (sel ? " selected" : "") + (between ? " in-range" : ""),
+            "aria-selected": sel || between ? "true" : "false", "aria-label": d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }),
             disabled: ok ? null : true, tabindex: s === iso(focus) ? "0" : "-1", "data-date": s, text: String(d.getDate()),
           });
-          b.addEventListener("click", () => { commit(s); close(); input.focus(); });
+          b.addEventListener("click", () => pick(s));
           row.appendChild(b);
         }
         grid.appendChild(row);
       }
       grid.addEventListener("keydown", onGridKey);
       wrap.appendChild(grid);
+      if (range) wrap.appendChild(h("div", { class: "st-cal-hint", "aria-live": "polite", text: pending ? "Pick the end date" : "Pick the start date" }));
       return wrap;
     }
     function clampFocus() {
@@ -399,16 +750,25 @@ window.StUI = (function () {
     }
     function open() {
       if (popup) return;
-      const cur = parseIso(value) || new Date();
+      const cur = parseIso(range ? value[0] : value) || new Date();
       focus = inRange(cur) ? cur : (minD && cur < minD ? minD : maxD || cur);
       view = new Date(focus.getFullYear(), focus.getMonth(), 1);
-      popup = openPopup(el, h("div"), { className: "st-popup-calendar", role: "dialog", label: "Choose date",
-        onClose: () => { popup = null; input.setAttribute("aria-expanded", "false"); } });
+      popup = openPopup(el, h("div"), { className: "st-popup-calendar", role: "dialog", label: range ? "Choose date range" : "Choose date",
+        onClose: () => { popup = null; pending = null; input.setAttribute("aria-expanded", "false"); } });
       input.setAttribute("aria-expanded", "true");
       rerender(false);
     }
     function close() { if (popup) popup.close(); }
     const tryCommitTyped = () => {
+      if (range) {
+        const m = /(\d{4}-\d{2}-\d{2})\D+(\d{4}-\d{2}-\d{2})/.exec(input.value);
+        const a = m && parseIso(m[1]), b = m && parseIso(m[2]);
+        if (a && b && inRange(a) && inRange(b)) {
+          const v = a <= b ? [iso(a), iso(b)] : [iso(b), iso(a)];
+          if (v.join() !== value.join()) commit(v); else input.value = shown();
+        } else input.value = shown();
+        return;
+      }
       const d = parseIso(input.value.trim());
       if (d && inRange(d)) { if (iso(d) !== value) commit(iso(d)); else input.value = value; }
       else input.value = value;
@@ -421,8 +781,8 @@ window.StUI = (function () {
       else if (ev.key === "Escape" && popup) { ev.preventDefault(); ev.stopPropagation(); close(); }
     });
     input.addEventListener("blur", () => setTimeout(() => { if (!popup || !popup.pop.contains(document.activeElement)) tryCommitTyped(); }, 150));
-    input.value = value;
-    return { el, input, setValue(v) { value = v || ""; if (document.activeElement !== input) input.value = value; } };
+    input.value = shown();
+    return { el, input, setValue(v) { value = range ? (Array.isArray(v) ? v.slice() : []) : (v || ""); if (document.activeElement !== input) input.value = shown(); } };
   }
 
   // ------------------------------------------------------------------ time picker
@@ -575,5 +935,5 @@ window.StUI = (function () {
     };
   }
 
-  return { h, openPopup, closeAll, inPopup, combobox, multiCombobox, datePicker, timePicker, colorPicker };
+  return { h, openPopup, closeAll, inPopup, menu, attachMenu, combobox, multiCombobox, tagsInput, treeSelect, datePicker, timePicker, colorPicker };
 })();

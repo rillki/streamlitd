@@ -49,7 +49,9 @@ All messages are JSON over one WebSocket per tab (`<base>/_stcore/ws`).
 | `delta` | `path` (e.g. `[0, 3, 1]`) + `el` (element JSON with `kind`, and `block` for containers) |
 | `page_config`, `set_theme`, `navigation`, `set_page`, `query_params`, `toast`, `effect`, `logo`, `navigate` | page-level effects |
 
-Paths start with a root: `0` main area, `1` sidebar, `2` bottom (chat input), `3` dialogs.
+Paths start with a root: `0` main area, `1` sidebar, `2` bottom (chat input), `3` dialogs, `4` header bar
+(`st.topbar`, `userMenu`), `5` footer (`st.footer`), `6` banners (`st.banner`). Roots 1, 2, 4, 5 and 6 are
+hidden while they have no visible content (`updateSidebarVisibility` in `app.js`).
 
 ## Rendering model (frontend)
 
@@ -73,9 +75,12 @@ and look different on every OS. `assets/ui.js` (`window.StUI`, loaded before `ap
 | Component | Used by | Notes |
 |---|---|---|
 | `openPopup(anchor, content, opts)` | every pop-up | rendered into a body-level portal `#stPopups` (`position: fixed`), so it is never clipped by `overflow` in dataframes, expanders, dialogs, the sidebar or the settings panel; flips above the anchor when there is no room below, stays inside the viewport, follows scrolling, closes on outside click / Escape; nested pop-ups (the calendar's month/year lists) stack |
+| `menu`, `attachMenu` | `menuButton`, `userMenu`, top-navigation sections and the phone ☰ menu | ARIA `menu`/`menuitem`; ↑/↓/Home/End, type-ahead, Enter/Space, Esc returns focus; the focused item gets `.active` so every design highlights it; separators and headings; link items open in a new tab with Ctrl/Cmd |
 | `combobox` | `selectbox`, settings menu | searchable (type to filter, like Streamlit), ↑/↓/Home/End/PageUp/PageDown/Enter/Esc/Tab, ARIA `combobox` + `listbox` + `option`, placeholder |
 | `multiCombobox` | `multiselect` | chips, list stays open while picking, Backspace removes the last chip, clear-all, `maxSelections` |
-| `datePicker` | `date_input` | typed `YYYY-MM-DD` or a calendar grid (min/max, today, keyboard: arrows/PageUp/PageDown/Home/End) |
+| `datePicker` | `date_input`, `dateRangeInput` (`range: true`) | typed `YYYY-MM-DD` (or `start – end`) or a calendar grid (min/max, today, keyboard: arrows/PageUp/PageDown/Home/End); in range mode two clicks pick the start and the end |
+| `tagsInput` | `tagsInput` | free-text chips: Enter or comma adds, Backspace removes, optional suggestion list |
+| `treeSelect` | `treeSelect` | ARIA `tree` in a pop-up with search; subtree checks with a partial state; committed when the pop-up closes |
 | `timePicker` | `time_input` | typed `HH:MM` or a stepped, filterable list |
 | `colorPicker` | `color_picker` | saturation/brightness area, hue slider, hex field, quick swatches from the color scheme; committed when the pop-up closes |
 

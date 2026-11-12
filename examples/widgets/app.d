@@ -10,7 +10,8 @@ void app(St st)
 	st.title("Widget gallery");
 	st.caption("Every interaction reruns this D function from top to bottom.");
 
-	auto tabs = st.tabs(["Inputs", "Layout", "Forms", "Status"]);
+	auto tabs = st.tabs(["Inputs", "Layout", "Forms", "Status", "More"]);
+	more(tabs[4]);
 
 	// ---------------------------------------------------------------- inputs
 	with (tabs[0])
@@ -124,6 +125,67 @@ void app(St st)
 		if (button("Raise exception"))
 			throw new Exception("Something went wrong in the app");
 	}
+}
+
+/// streamlitd's extra elements: cards, stepper, skeleton, timeline, avatars, details, tags,
+/// tree select, date range and copy button.
+void more(St st)
+{
+	st.subheader("Cards");
+	auto cols = st.columns(3);
+	foreach (i, name; ["Revenue", "Orders", "Customers"])
+	{
+		auto c = cols[i].card(name, "Last 30 days", icon: ["💰", "📦", "👥"][i]);
+		c.metric(name, ["$48.2k", "1,204", "312"][i], ["+12%", "+3%", "-1%"][i]);
+		c.button("Open " ~ name, key: "card-" ~ name);
+	}
+
+	st.subheader("Stepper");
+	auto steps = ["Account", "Address", "Payment", "Confirm"];
+	auto step = st.session.get!int("wizard", 0);
+	st.stepper(steps, step);
+	auto nav = st.columns(6);
+	if (nav[0].button("Back", key: "wizard-back", disabled: step == 0))
+	{
+		st.session["wizard"] = step - 1;
+		st.rerun();
+	}
+	if (nav[1].button(step + 1 < steps.length ? "Next" : "Finish", key: "wizard-next", type: "primary",
+		disabled: step >= steps.length))
+	{
+		st.session["wizard"] = step + 1;
+		st.rerun();
+	}
+
+	st.subheader("Loading placeholder");
+	st.skeleton(3);
+
+	st.subheader("Timeline");
+	st.timeline([
+		TimelineItem("Order placed", "09:12", "Order **#1042**, 3 items", null, null),
+		TimelineItem("Payment received", "09:14", null, "💳", "success"),
+		TimelineItem("Address check", "09:20", "The street name was corrected.", null, "warning"),
+		TimelineItem("Shipped", "11:05", null, "🚚", "info"),
+	]);
+
+	st.subheader("People and records");
+	auto who = st.columns([1, 1, 1, 6]);
+	who[0].avatar("Ann Lee");
+	who[1].avatar("Bob Stone", size: "large");
+	who[2].avatar("Carla Diaz", size: "small");
+	st.details([["Customer", "ACME Corp"], ["Contact", "Ann Lee"], ["Since", "2019"], ["Status", "**Active**"]]);
+
+	st.subheader("More inputs");
+	auto tags = st.tagsInput("Tags", ["d", "dashboard"], ["streamlit", "vibe.d", "charts", "reports"], maxTags: 5, key: "tags");
+	auto regions = st.treeSelect("Regions", [
+		TreeNode("eu", "Europe", [TreeNode("de", "Germany"), TreeNode("fr", "France"), TreeNode("es", "Spain")]),
+		TreeNode("am", "Americas", [TreeNode("us", "United States"), TreeNode("br", "Brazil")]),
+		TreeNode("as", "Asia", [TreeNode("jp", "Japan")]),
+	], ["de"], key: "regions");
+	auto period = st.dateRangeInput("Period", DateRange(Date(2026, 1, 1), Date(2026, 1, 31)), key: "period");
+	st.write("Tags:", tags.join(", "), "· Regions:", regions.join(", "), "· Period:",
+		period.start.toISOExtString ~ " – " ~ period.end.toISOExtString);
+	st.copyButton("https://example.com/report?period=" ~ period.start.toISOExtString, "Copy report link");
 }
 
 mixin StreamlitMain!app;

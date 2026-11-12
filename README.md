@@ -69,6 +69,9 @@ win95, XP, brutalist, material and glass, each usable with any color scheme:
   - base URL path for reverse proxies, origin checks, session limits
   - Docker image, health endpoint
 - **Auth:** password users (PBKDF2) and OIDC (Google, Entra ID, Keycloak, …), `st.user`.
+- **App shell and business UI** beyond Streamlit: top navigation with sections, breadcrumbs, a header
+  bar, user menu, footer and banners; menu buttons, pagination, cards, stepper, timeline, tags, tree
+  select, date ranges and more: [Layout](docs/layout-and-navigation.md), [More elements](docs/more-elements.md).
 - **Custom components** compatible with Streamlit's component protocol.
 - **Extensible:** add your own color schemes, design styles and native widgets, in D or in
   `config.toml`: [Extending](docs/extending.md).

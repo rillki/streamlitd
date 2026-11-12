@@ -190,6 +190,78 @@ mixin StreamlitMain!app;
 - Widget state belongs to the page. Leaving a page forgets its widgets' values (as in
   Streamlit). Use `st.session` to share values between pages.
 
+### Top navigation and sections
+
+`position: "top"` puts the page links in a bar at the top of the page instead of the sidebar.
+Pages with the same `section` are grouped: under a small heading in the sidebar, or in a dropdown
+in the top bar (like Streamlit's `st.navigation({"Reports": [...]})`). Keep a section's pages next
+to each other.
+
+<!-- no-compile -->
+```d
+auto page = st.navigation([
+    Page(&home, "Home", "🏠"),
+    Page(&sales, "Sales", "💰", section: "Reports"),
+    Page(&stock, "Inventory", "📦", section: "Reports"),
+    Page(&settings, "Settings", "⚙️"),
+], position: "top");
+```
+
+On narrow screens (phones) the top bar shows the current page's title instead; it opens one menu
+with every page, grouped by section. Links and menus work with the keyboard (↓ opens a section,
+arrows move, Enter opens the page, Esc closes) and Ctrl/Cmd-click opens a page in a new tab.
+
+### Breadcrumbs
+
+<!-- wrap -->
+```d
+st.breadcrumbs();                                        // from st.navigation: Home › Reports › Sales
+st.breadcrumbs(["Customers", "ACME", "Invoices"], ["customers"]);  // explicit trail
+```
+
+Without arguments, the trail is built from `st.navigation` (call it first): the default page, the
+page's section, then the page itself. With arguments, each item that has a URL path is a link to
+that app page (a page's `urlPath`); the others are plain text. The last item is the current position.
+
+## App shell: header bar, footer and banners
+
+Besides the main area and the sidebar, a page has three more places to draw into (streamlitd only):
+
+<!-- wrap -->
+```d
+st.banner("**Maintenance** tonight from 22:00 to 23:00.", "warning");   // above the main content
+if (st.topbar.button("Help"))                                            // right side of the header bar
+    st.toast("Read the docs at ...");
+st.footer.caption("ACME Analytics · version 1.4 · © 2026");             // under the main content
+```
+
+- **`st.topbar`** is a container in the header bar, next to the rerun and settings buttons. It is
+  meant for a few small items: buttons, `menuButton`, `userMenu`. When it has content (or the
+  navigation is at the top), the header bar gets a background in every design.
+- **`st.footer`** is a container under the main content of every page. Like the sidebar, it is
+  hidden while empty.
+- **`st.banner(body, type, dismissible, key, icon)`** shows a notice across the top of the main
+  content (`type`: `info`, `success`, `warning`, `error`; the body is Markdown). A viewer can
+  close a dismissible banner; it then stays closed in that browser tab until its text changes,
+  or, with a `key`, until the key changes (so fixing a typo does not show it again).
+
+Draw them in the code that runs for every page (before or after `page.run(st)`), so they appear
+on all pages.
+
+### User menu
+
+<!-- wrap -->
+```d
+auto picked = st.userMenu(["Profile", "Billing", "-", "Help"]);
+if (picked == "Profile")
+    st.switchPage("profile");
+```
+
+`st.userMenu` shows the signed-in user in the header bar: their picture (OIDC `picture` claim) or
+initials, and their name. It opens a menu with your items (`"-"` is a separator) and **Log out**.
+It returns the item picked in this run, otherwise null, like a button. Signed out, it shows a
+**Log in** button; without `[auth]` configured it shows nothing. See [Authentication](authentication.md).
+
 ## Query parameters
 
 <!-- wrap -->

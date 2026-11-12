@@ -93,6 +93,8 @@ and `labelVisibility: "visible" | "hidden" | "collapsed"`.
 | `with st.chat_message("user"):` | `with (st.chatMessage("user")) { ... }` |
 | `@st.dialog("Title")` + call | `st.dialog("Title", (St d) { ... }, width: "large")` |
 | `@st.fragment(run_every=5)` + call | `st.fragment((St f) { ... }, runEvery: 5)` |
+| `st.date_input("Period", (start, end))` | `DateRange r = st.dateRangeInput("Period", DateRange(start, end));` |
+| (no equivalent) | `menuButton`, `pagination`, `card`, `stepper`, `skeleton`, `timeline`, `avatar`, `details`, `tagsInput`, `treeSelect`, `copyButton` ([More elements](more-elements.md)) |
 
 ## Data and charts
 
@@ -144,6 +146,8 @@ and `labelVisibility: "visible" | "hidden" | "collapsed"`.
 | `pg = st.navigation([st.Page(f, title=, icon=)]); pg.run()` | `auto pg = st.navigation([Page(&f, "Title", "📈")]); pg.run(st);` |
 | `st.switch_page("pages/x.py")` | `st.switchPage("Title or url-path")` |
 | `st.page_link("x", label=, icon=)` | `st.pageLink("url-path", "Label", "🏠")` |
+| `st.navigation({"Reports": [...]}, position="top")` | `Page(&f, "Sales", section: "Reports")` + `st.navigation(pages, position: "top")` |
+| (no equivalent) | `st.breadcrumbs()`, `st.topbar.button(...)`, `st.footer.caption(...)`, `st.banner(...)`, `st.userMenu([...])` ([Layout](layout-and-navigation.md#app-shell-header-bar-footer-and-banners)) |
 
 ## Users and authentication
 

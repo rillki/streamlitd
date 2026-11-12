@@ -70,6 +70,90 @@ package TimeOfDay strTime(string s)
 	return TimeOfDay(p[0].to!int, p[1].to!int, p.length > 2 ? p[2].to!int : 0);
 }
 
+/// A node of `st.treeSelect`.
+struct TreeNode
+{
+	string id;       /// returned when selected; unique in the tree
+	string label;
+	TreeNode[] children;
+}
+
+/// A date range from `st.dateRangeInput` (`start <= end`, both included).
+struct DateRange
+{
+	Date start;
+	Date end;
+}
+
+package void collectTreeIds(const TreeNode[] nodes, ref bool[string] ids)
+{
+	import streamlitd.errors : StreamlitAPIException;
+	foreach (n; nodes)
+	{
+		if (n.id in ids)
+			throw new StreamlitAPIException(`treeSelect(): duplicate node id "` ~ n.id ~ `"`);
+		ids[n.id] = true;
+		collectTreeIds(n.children, ids);
+	}
+}
+
+package Json treeJson(const TreeNode[] nodes)
+{
+	auto a = Json.emptyArray;
+	foreach (n; nodes)
+	{
+		auto o = Json.emptyObject;
+		o["id"] = n.id;
+		o["label"] = n.label;
+		if (n.children.length)
+			o["children"] = treeJson(n.children);
+		a ~= o;
+	}
+	return a;
+}
+
+/// The value of a tree select, as the browser keeps it: in `multi` mode a picked node stands for its
+/// whole subtree and a parent is picked exactly when all its children are; the ids come in tree
+/// order (pre-order). Single mode: the first id that is in the tree. Unknown ids are dropped.
+package string[] normalizeTree(const TreeNode[] nodes, const string[] ids, bool multi)
+{
+	bool[string] want;
+	foreach (x; ids)
+		want[x] = true;
+	string[] r;
+	if (!multi)
+	{
+		bool[string] all;
+		collectTreeIds(nodes, all);
+		foreach (x; ids)
+			if (x in all)
+				return [x];
+		return null;
+	}
+	// returns whether `n` ends up checked; `inherited`: an ancestor was picked
+	bool walk(const TreeNode n, bool inherited, ref string[] outIds)
+	{
+		immutable picked = inherited || (n.id in want) !is null;
+		if (!n.children.length)
+		{
+			if (picked)
+				outIds ~= n.id;
+			return picked;
+		}
+		string[] sub;
+		bool all = true;
+		foreach (c; n.children)
+			all = walk(c, picked, sub) && all;
+		if (all)
+			outIds ~= n.id;
+		outIds ~= sub;
+		return all;
+	}
+	foreach (n; nodes)
+		walk(n, false, r);
+	return r;
+}
+
 /// Widgets mixed into `St`.
 mixin template Widgets()
 {
@@ -89,6 +173,51 @@ mixin template Widgets()
 		p["fullWidth"] = useContainerWidth;
 		p["icon"] = icon;
 		return widget!bool("button", id, key, false, (bool v) => Json(v), (Json j) => true, onClick, p, true);
+	}
+
+	/// A button that opens a menu of actions (streamlitd only). Returns the item picked in this run,
+	/// otherwise null, like `button`. An item `"-"` is a separator.
+	/// ---
+	/// switch (st.menuButton("Export", ["CSV", "Excel", "-", "Print"]))
+	/// { case "CSV": ...; default: }
+	/// ---
+	string menuButton(string label, string[] items, string icon = null, string type = "secondary", string key = null,
+		string help = null, bool disabled = false, void delegate() onClick = null)
+	{
+		auto id = widgetId("menu_button", key, label, items.join("\x01"));
+		auto p = commonProps(label, help, disabled, "visible");
+		p["items"] = toJ(items);
+		p["type"] = type;
+		p["icon"] = icon;
+		return widget!string("menu_button", id, key, null, (string v) => Json(v), (Json j) {
+			auto s = j.get!string;
+			foreach (it; items)
+				if (it == s && it != "-")
+					return s;
+			throw new StreamlitAPIException("not a menu item");
+		}, onClick, p, true);
+	}
+
+	/// Page buttons (‹ 1 2 … 9 ›) for long tables and lists (streamlitd only). Returns the selected
+	/// page, starting at 1; it stays within the pages when `totalItems` shrinks.
+	/// ---
+	/// auto page = st.pagination(rows.length, 20);
+	/// st.table(rows[(page - 1) * 20 .. min(page * 20, rows.length)]);
+	/// ---
+	size_t pagination(size_t totalItems, size_t pageSize = 10, string key = null, void delegate() onChange = null,
+		bool disabled = false, string label = "Pages")
+	{
+		if (pageSize == 0)
+			throw new StreamlitAPIException("pagination() pageSize must be at least 1");
+		immutable pages = totalItems == 0 ? 1 : (totalItems + pageSize - 1) / pageSize;
+		size_t clamp(long v) { return v < 1 ? 1 : v > pages ? pages : cast(size_t) v; }
+		auto id = widgetId("pagination", key, label, pageSize.to!string);
+		auto p = commonProps(label, null, disabled, "collapsed");
+		p["pages"] = pages;
+		p["total"] = totalItems;
+		p["pageSize"] = pageSize;
+		auto v = widget!size_t("pagination", id, key, 1, (size_t v) => Json(clamp(v)), (Json j) => clamp(j.get!long), onChange, p);
+		return clamp(v);
 	}
 
 	/// `st.form_submit_button` — must be called inside `st.form`.
@@ -443,6 +572,109 @@ mixin template Widgets()
 			if (maxValue != Date.init && d > maxValue) d = maxValue;
 			return d;
 		}, onChange, p);
+	}
+
+	/// A date range: two clicks in the calendar (or typing "2026-01-01 – 2026-01-31") pick the start
+	/// and the end (Streamlit: `st.date_input` with a pair). Defaults to today–today; the result
+	/// always has `start <= end` and stays within `minValue`/`maxValue`.
+	DateRange dateRangeInput(string label, DateRange value = DateRange.init, Date minValue = Date.init,
+		Date maxValue = Date.init, string key = null, string help = null, void delegate() onChange = null,
+		bool disabled = false, string labelVisibility = "visible")
+	{
+		if (value == DateRange.init)
+		{
+			auto today = cast(Date) Clock.currTime();
+			value = DateRange(today, today);
+		}
+		DateRange fix(DateRange r)
+		{
+			if (r.end < r.start)
+				r = DateRange(r.end, r.start);
+			foreach (d; [&r.start, &r.end])
+			{
+				if (minValue != Date.init && *d < minValue) *d = minValue;
+				if (maxValue != Date.init && *d > maxValue) *d = maxValue;
+			}
+			return r;
+		}
+		auto id = widgetId("date_range_input", key, label);
+		auto p = commonProps(label, help, disabled, labelVisibility);
+		p["min"] = minValue == Date.init ? null : dateStr(minValue);
+		p["max"] = maxValue == Date.init ? null : dateStr(maxValue);
+		// fix() also on the way out: a value set through st.session[key] skips the decoder
+		return fix(widget!DateRange("date_range_input", id, key, fix(value),
+			(DateRange r) { r = fix(r); return Json([Json(dateStr(r.start)), Json(dateStr(r.end))]); },
+			(Json j) {
+				if (j.type != Json.Type.array || j.length != 2)
+					throw new StreamlitAPIException("a date range is [start, end]");
+				return fix(DateRange(strDate(j[0].get!string), strDate(j[1].get!string)));
+			}, onChange, p));
+	}
+
+	/// Free-text tags (streamlitd only): typed text becomes a chip on Enter or comma; `suggestions`
+	/// are offered while typing. Tags are trimmed, empty and repeated ones dropped, and at most
+	/// `maxTags` kept (0 = no limit).
+	string[] tagsInput(string label, string[] value = null, string[] suggestions = null, size_t maxTags = 0,
+		string key = null, string help = null, void delegate() onChange = null, bool disabled = false,
+		string placeholder = null, string labelVisibility = "visible")
+	{
+		import std.string : strip;
+		string[] norm(string[] a)
+		{
+			string[] r;
+			foreach (t; a)
+			{
+				auto s = t.strip;
+				bool seen;
+				foreach (x; r)
+					seen = seen || x == s;
+				if (s.length && !seen && (maxTags == 0 || r.length < maxTags))
+					r ~= s;
+			}
+			return r;
+		}
+		auto id = widgetId("tags_input", key, label);
+		auto p = commonProps(label, help, disabled, labelVisibility);
+		p["suggestions"] = toJ(suggestions);
+		p["maxTags"] = maxTags;
+		p["placeholder"] = placeholder;
+		return norm(widget!(string[])("tags_input", id, key, norm(value), (string[] v) => toJ(norm(v)), (Json j) {
+			string[] r;
+			foreach (e; j)
+				r ~= e.get!string;
+			return norm(r);
+		}, onChange, p));
+	}
+
+	/// Pick nodes of a tree in a searchable pop-up (streamlitd only). Returns the ids of the picked
+	/// nodes in tree order. With `multi`, checking a node checks its whole subtree (also a parent id
+	/// in `value`), and a node is included when all of its children are; without it, one node.
+	/// Ids that are not in the tree are dropped.
+	string[] treeSelect(string label, TreeNode[] nodes, string[] value = null, bool multi = true, string key = null,
+		string help = null, void delegate() onChange = null, bool disabled = false, string placeholder = null,
+		string labelVisibility = "visible")
+	{
+		bool[string] ids;
+		collectTreeIds(nodes, ids); // throws on duplicate ids
+		string[] keep(string[] a) { return normalizeTree(nodes, a, multi); }
+		auto tree = treeJson(nodes);
+		auto id = widgetId("tree_select", key, label, tree.toString, multi ? "m" : "s");
+		auto p = commonProps(label, help, disabled, labelVisibility);
+		p["nodes"] = tree;
+		p["multi"] = multi;
+		p["placeholder"] = placeholder;
+		return keep(widget!(string[])("tree_select", id, key, keep(value), (string[] v) => toJ(keep(v)), (Json j) {
+			string[] r;
+			foreach (e; j)
+				r ~= e.get!string;
+			return keep(r);
+		}, onChange, p));
+	}
+
+	/// A button that copies `text` to the clipboard (streamlitd only); it does not rerun the app.
+	void copyButton(string text, string label = "Copy", string icon = "📋", string help = null)
+	{
+		emit(jo("kind", "copy_button", "text", text, "label", label, "icon", icon, "help", help));
 	}
 
 	/// `st.time_input`

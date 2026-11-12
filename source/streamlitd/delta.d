@@ -21,9 +21,9 @@ import std.algorithm : startsWith;
 import std.format : format;
 import std.math : isInfinity;
 import std.file : read;
-import streamlitd.elements : ProgressBar, Spinner, progressElement;
+import streamlitd.elements : ProgressBar, Spinner, progressElement, TimelineItem;
 import streamlitd.dataframe : DataFrame;
-import streamlitd.widgets : limitChars, formatOptions, numJ, jNum, dateStr, strDate, timeStr, strTime;
+import streamlitd.widgets : limitChars, formatOptions, numJ, jNum, dateStr, strDate, timeStr, strTime, TreeNode, DateRange, collectTreeIds, treeJson, normalizeTree;
 import streamlitd.dataelements : applyEditorState;
 import streamlitd.charts : buildChartSpec;
 import streamlitd.media : MediaManager, UploadedFile;
@@ -42,7 +42,16 @@ import streamlitd.components : ComponentElements, ComponentsApi, findComponent;
 import streamlitd.extensions : CustomElements, isElementRegistered;
 
 /// Root containers.
-enum RootContainer : int { main = 0, sidebar = 1, bottom = 2 }
+enum RootContainer : int
+{
+	main = 0,
+	sidebar = 1,
+	bottom = 2,   /// chat input
+	// 3: dialogs
+	topbar = 4,   /// right side of the header bar (`st.topbar`, `userMenu`)
+	footer = 5,   /// under the main content (`st.footer`)
+	banner = 6,   /// strip above the main content (`st.banner`)
+}
 
 /// The DeltaGenerator: the object passed to the app function (`st`) and returned by
 /// container calls (`st.sidebar`, `st.columns(2)[0]`, `st.expander("x")` ...).

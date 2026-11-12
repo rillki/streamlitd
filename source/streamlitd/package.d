@@ -20,7 +20,8 @@ public import streamlitd.session : AppSession, AppFn, Layout, PageConfig, RunSta
 public import streamlitd.state : SessionState;
 public import streamlitd.errors;
 public import streamlitd.dataframe : DataFrame, Row, ColumnType;
-public import streamlitd.elements : ProgressBar, Spinner;
+public import streamlitd.elements : ProgressBar, Spinner, TimelineItem;
+public import streamlitd.widgets : TreeNode, DateRange;
 public import streamlitd.media : UploadedFile;
 public import streamlitd.pages : Page;
 public import streamlitd.cache : cacheData, cacheResource, cacheClear, clearAllCaches;

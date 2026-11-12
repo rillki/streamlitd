@@ -51,6 +51,9 @@ Update the bar (0.0..1.0).
 #### `struct Spinner`
 RAII spinner returned by `st.spinner(text)`; removed when it goes out of scope.
 
+#### `struct TimelineItem`
+An event of `st.timeline`.
+
 ```d
 void title(string text, string anchor = null, string help = null)
 ```
@@ -132,6 +135,41 @@ void error(string body_, string icon = null)
 `st.error`
 
 ```d
+void banner(string body_, string type = "info", bool dismissible = true, string key = null, string icon = null)
+```
+A notice across the top of the page, above the main content (streamlitd only), e.g. planned maintenance or "STAGING". `type`: "info", "success", "warning" or "error" (Markdown body). With `dismissible`, the viewer can close it; it then stays closed in that browser tab until its text changes, or, with a `key`, until the key changes (so fixing a typo does not show it again). Call it once per run, like other elements.
+
+```d
+void avatar(string name, string image = null, string size = "medium")
+```
+A round picture or the initials of `name` (streamlitd only). `size`: "small", "medium" or "large".
+
+```d
+void details(string[2][] rows)
+```
+Labels and values of one record, in a two-column list (streamlitd only), e.g. a customer's details. Values are Markdown.
+
+```d
+void details(Json record)
+```
+ditto, from a JSON object: its keys are the labels, in alphabetical order (JSON objects keep no order; use the `string[2][]` form for your own order). Non-string values are shown as JSON.
+
+```d
+void stepper(string[] steps, size_t current, string orientation = "horizontal")
+```
+Progress through a sequence of steps (streamlitd only), e.g. a multi-step form. `current` is the index of the current step (0-based); steps before it are shown as done, and `current == steps.length` shows all as done. `orientation`: "horizontal" or "vertical".
+
+```d
+void skeleton(int lines = 3, int height = 0)
+```
+A placeholder that shows content is loading (streamlitd only): `lines` text lines, or a block of `height` pixels. Typical use: `auto ph = st.empty(); ph.skeleton(); ...; ph.dataframe(df);`.
+
+```d
+void timeline(TimelineItem[] items)
+```
+A vertical list of events (streamlitd only), newest or oldest first as given.
+
+```d
 void exception(Throwable e)
 ```
 `st.exception`
@@ -202,10 +240,26 @@ Source: [`source/streamlitd/widgets.d`](../source/streamlitd/widgets.d)
 
 Widgets return their current value. Pass `key:` to bind the value to `st.session[key]`.
 
+#### `struct TreeNode`
+A node of `st.treeSelect`.
+
+#### `struct DateRange`
+A date range from `st.dateRangeInput` (`start <= end`, both included).
+
 ```d
 bool button(string label, string key = null, string help = null, void delegate() onClick = null, bool disabled = false, string type = "secondary", bool useContainerWidth = false, string icon = null)
 ```
 `st.button` — true only on the run triggered by the click.
+
+```d
+string menuButton(string label, string[] items, string icon = null, string type = "secondary", string key = null, string help = null, bool disabled = false, void delegate() onClick = null)
+```
+A button that opens a menu of actions (streamlitd only). Returns the item picked in this run, otherwise null, like `button`. An item `"-"` is a separator.  switch (st.menuButton("Export", ["CSV", "Excel", "-", "Print"])) { case "CSV": ...; default: }
+
+```d
+size_t pagination(size_t totalItems, size_t pageSize = 10, string key = null, void delegate() onChange = null, bool disabled = false, string label = "Pages")
+```
+Page buttons (‹ 1 2 … 9 ›) for long tables and lists (streamlitd only). Returns the selected page, starting at 1; it stays within the pages when `totalItems` shrinks.  auto page = st.pagination(rows.length, 20); st.table(rows[(page - 1) * 20 .. min(page * 20, rows.length)]);
 
 ```d
 bool formSubmitButton(string label = "Submit", string help = null, void delegate() onClick = null, string type = "secondary", bool disabled = false, bool useContainerWidth = false, string icon = null)
@@ -313,6 +367,26 @@ Date dateInput(string label, Date value = Date.init, Date minValue = Date.init, 
 `st.date_input` (defaults to today).
 
 ```d
+DateRange dateRangeInput(string label, DateRange value = DateRange.init, Date minValue = Date.init, Date maxValue = Date.init, string key = null, string help = null, void delegate() onChange = null, bool disabled = false, string labelVisibility = "visible")
+```
+A date range: two clicks in the calendar (or typing "2026-01-01 – 2026-01-31") pick the start and the end (Streamlit: `st.date_input` with a pair). Defaults to today–today; the result always has `start <= end` and stays within `minValue`/`maxValue`.
+
+```d
+string[] tagsInput(string label, string[] value = null, string[] suggestions = null, size_t maxTags = 0, string key = null, string help = null, void delegate() onChange = null, bool disabled = false, string placeholder = null, string labelVisibility = "visible")
+```
+Free-text tags (streamlitd only): typed text becomes a chip on Enter or comma; `suggestions` are offered while typing. Tags are trimmed, empty and repeated ones dropped, and at most `maxTags` kept (0 = no limit).
+
+```d
+string[] treeSelect(string label, TreeNode[] nodes, string[] value = null, bool multi = true, string key = null, string help = null, void delegate() onChange = null, bool disabled = false, string placeholder = null, string labelVisibility = "visible")
+```
+Pick nodes of a tree in a searchable pop-up (streamlitd only). Returns the ids of the picked nodes in tree order. With `multi`, checking a node checks its whole subtree (also a parent id in `value`), and a node is included when all of its children are; without it, one node. Ids that are not in the tree are dropped.
+
+```d
+void copyButton(string text, string label = "Copy", string icon = "📋", string help = null)
+```
+A button that copies `text` to the clipboard (streamlitd only); it does not rerun the app.
+
+```d
 TimeOfDay timeInput(string label, TimeOfDay value = TimeOfDay.init, string key = null, string help = null, void delegate() onChange = null, bool disabled = false, int stepSeconds = 900, string labelVisibility = "visible")
 ```
 `st.time_input`
@@ -372,6 +446,21 @@ Containers return a new `St` that writes into them (use `with (c) { ... }`).
 @property St sidebar()
 ```
 `st.sidebar`
+
+```d
+@property St topbar()
+```
+`st.topbar`: the right side of the header bar, for small items such as buttons, `menuButton` or `userMenu` (streamlitd only).
+
+```d
+@property St footer()
+```
+`st.footer`: the area under the main content, on every page (streamlitd only).
+
+```d
+St card(string title = null, string subtitle = null, string image = null, string icon = null, string key = null)
+```
+A card (streamlitd only): a framed box with an optional image (URL) or icon, a title and a subtitle. Returns its body; put text, metrics and buttons in it. Use `st.columns` for a grid.
 
 ```d
 St container(bool border = false, int height = 0, string key = null)
@@ -645,7 +734,7 @@ URL slug of a title.
 ```d
 Page navigation(Page[] pages, string position = "sidebar")
 ```
-`st.navigation` — declares the pages and returns the selected one; call `.run(st)` on it. `position`: "sidebar" or "hidden".
+`st.navigation` — declares the pages and returns the selected one; call `.run(st)` on it. `position`: "sidebar", "top" (links in the header bar; sections become dropdowns, and on narrow screens everything moves into a ☰ menu) or "hidden". Group pages with `Page.section`.
 
 ```d
 void switchPage(string page)
@@ -656,6 +745,21 @@ void switchPage(string page)
 void pageLink(string urlPath, string label, string icon = null)
 ```
 `st.page_link`
+
+```d
+void breadcrumbs()
+```
+Breadcrumbs for the current page, from `st.navigation`: the default page › the page's section › the page (streamlitd only). Call it after `st.navigation`, e.g. at the top of a page.
+
+```d
+void breadcrumbs(string[] labels, string[] urlPaths = null)
+```
+Breadcrumbs with an explicit trail (streamlitd only). `urlPaths[i]` makes item i a link to that app page (null or missing: plain text); the last item is the current position.
+
+```d
+string userMenu(string[] items = null, bool logout = true, string key = null)
+```
+The user menu in the header bar: the logged-in user's picture (or initials) and name, opening a menu with `items` and "Log out". Returns the item clicked in this run, otherwise null. Signed out, it shows a "Log in" button; without `[auth]` configured it shows nothing. It is always placed in `st.topbar`, wherever it is called.
 
 ## Custom components
 
