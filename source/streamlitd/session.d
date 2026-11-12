@@ -187,6 +187,8 @@ final class AppSession
 	package bool appAllowSwitch = true;
 	/// Whether viewers may change style/mode from the settings menu.
 	bool allowThemeSwitch = true;
+	/// Header controls (`[ui]`): `{rerunButton, settingsButton, rerunShortcut}`, sent with `new_session`.
+	Json ui;
 
 	/// Per-session scratch values for library internals.
 	package Variant[string] internals;
@@ -258,7 +260,7 @@ final class AppSession
 	Json newSessionMessage()
 	{
 		return jo("type", "new_session", "sessionId", id, "themes", presetsJson(), "designs", designsJson(),
-			"theme", themeJson(defaultTheme, allowThemeSwitch));
+			"theme", themeJson(defaultTheme, allowThemeSwitch), "ui", ui);
 	}
 
 	/// Process a message from the browser.

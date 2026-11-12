@@ -962,3 +962,26 @@ unittest
 	auto u = acc.register("dave", "orange cat 3", null, null, inv[inv.indexOf("invite=") + 7 .. $]);
 	assert(u.username == "dave" && acc.invites.length == 0);
 }
+
+// ---------------------------------------------------------------- header controls: rerun / appearance buttons
+
+unittest
+{
+	auto at = new AppTest((St st) {
+		st.setPageConfig(rerunButton: "menu", settingsButton: "hidden");
+		st.sidebar.rerunButton();
+		st.footer.settingsButton("Theme", "🎨");
+		st.userMenu(["Help"], rerun: true, appearance: true);
+	});
+	at.loginAs("ann").run();
+	assert(at.exceptions.length == 0, at.exceptions.to!string);
+	auto pc = at.messages("page_config")[0];
+	assert(pc["rerunButton"].get!string == "menu" && pc["settingsButton"].get!string == "hidden");
+	assert(at.elements("rerun_button")[0]["label"].get!string == "Rerun");
+	auto sb = at.elements("settings_button")[0];
+	assert(sb["label"].get!string == "Theme" && sb["icon"].get!string == "🎨");
+	auto um = at.widget("user_menu", null);
+	assert(um["rerun"].get!bool && um["appearance"].get!bool);
+	auto bad = new AppTest((St st) { st.setPageConfig(rerunButton: "footer"); }).run();
+	assert(bad.exceptions.length == 1);
+}

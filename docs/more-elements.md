@@ -21,6 +21,7 @@ breadcrumbs) are in [Layout & navigation](layout-and-navigation.md#app-shell-hea
 | [Tree select](#tree-select) | `string[] treeSelect(label, TreeNode[], value, multi, ...)` |
 | [Date range](#date-range) | `DateRange dateRangeInput(label, value, minValue, maxValue, ...)` |
 | [Copy button](#copy-button) | `copyButton(text, label, icon, help, url)` |
+| Rerun / appearance buttons | `rerunButton(label, icon)`, `settingsButton(label, icon)`: the header's ⟳ and ⚙ anywhere ([Header controls](layout-and-navigation.md#header-controls-rerun-and-appearance)) |
 
 ## Menu button
 

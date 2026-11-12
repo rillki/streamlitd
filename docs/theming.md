@@ -149,7 +149,8 @@ or on the command line: `--theme.primaryColor=#0055aa`.
 
 ## The viewer appearance menu
 
-The ⚙ button in the top-right corner lets **viewers** choose:
+The ⚙ button in the top-right corner lets **viewers** choose (the app can move it into a ⋮ menu,
+or out of the header to a button of its own: [Header controls](layout-and-navigation.md#header-controls-rerun-and-appearance)):
 
 - the design style (a list and preview cards);
 - the color scheme (a list and swatches);

@@ -5,6 +5,11 @@ const fs = require("fs");
 
 const root = path.resolve(__dirname, "../..");
 const apps = { hello: 8701, widgets: 8702, data: 8703, multipage: 8704, themes: 8705, prod: 8706, fragments: 8707, extras: 8708, auth: 8709, tutorial: 8710, api: 8711, custom: 8713, accounts: 8714 };
+// the same example started again with other flags (header controls in a menu / hidden)
+const variants = {
+  "hello-menu": { app: "hello", port: 8715, flags: "--rerun-button menu --settings-button menu" },
+  "hello-hidden": { app: "hello", port: 8716, flags: "--rerun-button hidden --settings-button hidden --no-rerun-shortcut" },
+};
 // apps served under a base URL path (from their config.toml)
 const basePaths = { prod: "/app" };
 // environment for an app's command (the auth app also serves its API docs, switched on by env var);
@@ -56,7 +61,13 @@ module.exports = {
     url: "http://127.0.0.1:8712/sub/_stcore/health",
     timeout: 600000,
     reuseExistingServer: !process.env.CI,
-  }),
+  }).concat(Object.entries(variants).map(([name, v]) => ({
+    // another instance of an example with other command-line flags (built by its own entry)
+    command: `cd ${root}/examples/${v.app} && until [ -x ./${v.app} ] && curl -sf http://127.0.0.1:${apps[v.app]}/_stcore/health >/dev/null; do sleep 1; done; ./${v.app} --port ${v.port} --host 127.0.0.1 --quiet ${v.flags}`,
+    url: `http://127.0.0.1:${v.port}/_stcore/health`,
+    timeout: 600000,
+    reuseExistingServer: !process.env.CI,
+  }))),
 };
-module.exports.apps = apps;
+module.exports.apps = Object.assign({}, apps, Object.fromEntries(Object.entries(variants).map(([n, v]) => [n, v.port])));
 module.exports.basePaths = basePaths;

@@ -204,6 +204,8 @@ private void handleWS(scope WebSocket sock) @system
 	sess.mapTileUrl = g_opts.mapTileUrl;
 	sess.mapAttribution = g_opts.mapAttribution;
 	sess.allowThemeSwitch = g_opts.allowThemeSwitch;
+	sess.ui = jo("rerunButton", g_opts.ui.rerunButton, "settingsButton", g_opts.ui.settingsButton,
+		"rerunShortcut", g_opts.ui.rerunShortcut);
 	g_sessions[sess.id] = sess;
 	auto ev = createManualEvent();
 	sess.onRerunRequested = () { ev.emit(); };
@@ -987,7 +989,8 @@ ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction 
 	// schemes and designs from config files count too (they are registered when the server starts)
 	auto schemeNames = colorSchemeNames() ~ o.schemes.map!(c => c.name).array;
 	auto designNamesAll = designNames() ~ o.designs.map!(d => d.style.name).array;
-	bool noSwitch, hashPassword, listUsers;
+	bool noSwitch, hashPassword, listUsers, noRerunShortcut;
+	string rerunButton, settingsButton;
 	string addUser, setPassword, deleteUser, resetLink, setRoles, roles;
 	string unusedConfig;
 	auto help = getopt(args, config.passThrough,
@@ -1005,6 +1008,9 @@ ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction 
 		"design", "Design style: " ~ designNamesAll.join(", "), &o.theme.design,
 		"theme-mode", "auto | light | dark", &o.theme.mode,
 		"no-theme-switch", "Hide the viewer's appearance menu", &noSwitch,
+		"rerun-button", "Where the rerun button goes: header (default), menu (one ⋮ menu) or hidden", &rerunButton,
+		"settings-button", "Where the appearance button goes: header (default), menu or hidden", &settingsButton,
+		"no-rerun-shortcut", "The R key does not rerun the app", &noRerunShortcut,
 		"hash-password", "Read a password from stdin and print its hash for secrets.toml", &hashPassword,
 		"add-user", "Create a user in the user store (asks for the password; see --roles, --email, --name)", &addUser,
 		"set-password", "Set a user's password (asks for it)", &setPassword,
@@ -1053,6 +1059,12 @@ ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction 
 	}
 	if (noSwitch)
 		o.allowThemeSwitch = false;
+	if (rerunButton !is null)
+		o.ui.rerunButton = uiPlacement(rerunButton, "--rerun-button");
+	if (settingsButton !is null)
+		o.ui.settingsButton = uiPlacement(settingsButton, "--settings-button");
+	if (noRerunShortcut)
+		o.ui.rerunShortcut = false;
 	if (o.favicon.length && action == ArgsAction.serve)
 	{
 		immutable(ubyte)[] data;
@@ -1256,4 +1268,32 @@ unittest
 	assert(c[0] == "#0055aa" && c[2] == "#0055aa", c[0]);
 	th.scheme = "nope";
 	assert(authPageColors(th)[0] == "#ff4b4b");
+}
+
+unittest
+{
+	// [ui]: header controls from the config file, env and CLI (CLI > env > file), validated
+	import std.algorithm : canFind;
+	import std.exception : assertThrown;
+	import std.file : tempDir, write, remove;
+	import std.path : buildPath;
+	ArgsAction act;
+	string helpText;
+	auto o = parseServerArgs(["app"], null, act, helpText, false);
+	assert(o.ui.rerunButton == "header" && o.ui.settingsButton == "header" && o.ui.rerunShortcut);
+	auto cfg = buildPath(tempDir, "streamlitd-ui-test.toml");
+	write(cfg, "[ui]\nrerunButton = \"menu\"\nsettingsButton = \"hidden\"\nrerunShortcut = false\n");
+	scope (exit) remove(cfg);
+	o = parseServerArgs(["app", "--config", cfg], null, act, helpText, false);
+	assert(o.ui.rerunButton == "menu" && o.ui.settingsButton == "hidden" && !o.ui.rerunShortcut);
+	o = parseServerArgs(["app", "--config", cfg], ["STREAMLITD_UI_RERUNBUTTON": "hidden", "STREAMLITD_UI_RERUNSHORTCUT": "yes"],
+		act, helpText, false);
+	assert(o.ui.rerunButton == "hidden" && o.ui.rerunShortcut);
+	o = parseServerArgs(["app", "--rerun-button", "header", "--settings-button", "menu", "--no-rerun-shortcut"],
+		["STREAMLITD_UI_RERUNBUTTON": "hidden"], act, helpText, false);
+	assert(o.ui.rerunButton == "header" && o.ui.settingsButton == "menu" && !o.ui.rerunShortcut);
+	assertThrown(parseServerArgs(["app", "--rerun-button", "footer"], null, act, helpText, false));
+	assertThrown(parseServerArgs(["app"], ["STREAMLITD_UI_SETTINGSBUTTON": "nowhere"], act, helpText, false));
+	parseServerArgs(["app", "--help"], null, act, helpText, false);
+	assert(helpText.canFind("--rerun-button") && helpText.canFind("--no-rerun-shortcut"));
 }

@@ -12,7 +12,8 @@ Python keyword arguments: `st.slider("x", 0, 10, 5, step: 2, key: "s")`. Python'
 | script body | `void app(St st) { ... }` plus `mixin StreamlitMain!app;` |
 | `streamlit run app.py` | `dub run --compiler=ldc2` (or `./app`) |
 | `streamlit run app.py --server.port 8080` | `./app --port 8080` |
-| `st.set_page_config(page_title=, page_icon=, layout="wide", initial_sidebar_state=)` | `st.setPageConfig(title:, icon:, layout: Layout.wide, initialSidebarState:, design:, colorScheme:)` (`icon`: emoji, URL or local image file) |
+| `st.set_page_config(page_title=, page_icon=, layout="wide", initial_sidebar_state=)` | `st.setPageConfig(title:, icon:, layout: Layout.wide, initialSidebarState:, design:, colorScheme:, rerunButton:, settingsButton:)` (`icon`: emoji, URL or local image file) |
+| `[client] toolbarMode`, `[ui] hideTopBar` (closest match) | `[ui] rerunButton` / `settingsButton` = `header`, `menu`, `hidden`; `st.rerunButton()`, `st.settingsButton()` to place them anywhere ([Header controls](layout-and-navigation.md#header-controls-rerun-and-appearance)) |
 | `page_icon` from bytes / app-wide favicon | `st.setFavicon(bytes, "image/png")`; `[server] favicon = "logo.svg"` or `--favicon logo.svg` |
 
 ## Text

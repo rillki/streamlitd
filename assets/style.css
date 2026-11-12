@@ -68,6 +68,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 #st-header > * { pointer-events: auto; }
 .header-spacer { flex: 1; }
 .icon-btn { background: transparent; border: none; cursor: pointer; font-size: 1.15rem; width: 2.25rem; height: 2.25rem; border-radius: var(--radius); color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn[hidden] { display: none; }
 .icon-btn:hover { background: var(--bg2); color: var(--text); }
 #stStatus { display: flex; align-items: center; gap: .5rem; font-size: .875rem; color: var(--text-muted); }
 #stStatus.running::before { content: ""; width: 1rem; height: 1rem; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
@@ -396,8 +397,9 @@ table.df tr.added td { background: rgba(33,195,84,.06); }
 /* ---------- settings menu (design style / mode) ---------- */
 #stSettingsWrap { position: relative; }
 #stSettingsWrap[hidden] { display: none; }
-#stSettingsPanel { position: absolute; right: 0; top: calc(100% + .25rem); width: min(20rem, calc(100vw - 2rem)); max-height: calc(100vh - 5rem); overflow-y: auto; box-sizing: border-box; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1rem; z-index: 80; display: flex; flex-direction: column; gap: .75rem; font-size: .9rem; }
+#stSettingsPanel { position: fixed; top: 4rem; right: 1rem; width: min(20rem, calc(100vw - 2rem)); max-height: calc(100vh - 5rem); overflow-y: auto; box-sizing: border-box; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1rem; z-index: 95; display: flex; flex-direction: column; gap: .75rem; font-size: .9rem; } /* above dialogs (90): it can be opened from one */
 #stSettingsPanel[hidden] { display: none; }
+#stSettingsPanel > * { flex-shrink: 0; } /* with a height limit it scrolls; rows never squash */
 #stSettingsPanel h4 { margin: 0; font-size: .95rem; }
 .seg { display: flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .seg button { flex: 1; background: transparent; border: none; padding: .3rem .25rem; cursor: pointer; font-size: .85rem; }

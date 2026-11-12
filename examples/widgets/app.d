@@ -83,7 +83,10 @@ void app(St st)
 		ph.info("This placeholder was replaced...");
 		ph.success("...by a newer element (st.empty).");
 		with (popover("Open popover"))
+		{
 			write("Popover content");
+			settingsButton(); // the appearance panel opens from here too
+		}
 	}
 
 	// ---------------------------------------------------------------- forms

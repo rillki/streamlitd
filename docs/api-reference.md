@@ -172,6 +172,16 @@ void timeline(TimelineItem[] items)
 A vertical list of events (streamlitd only), newest or oldest first as given.
 
 ```d
+void rerunButton(string label = "Rerun", string icon = "⟳", string help = null)
+```
+A button that reruns the whole app, like ⟳ in the header (streamlitd only). Place it anywhere, e.g. `st.sidebar.rerunButton()` with `[ui] rerunButton = "hidden"`.
+
+```d
+void settingsButton(string label = "Appearance", string icon = "⚙", string help = null)
+```
+A button that opens the viewer's appearance panel (mode, design style, color scheme) next to it, like ⚙ in the header (streamlitd only). It shows nothing while the app does not let viewers change the appearance (`[theme] allowSwitch = false`).
+
+```d
 void exception(Throwable e)
 ```
 `st.exception`
@@ -759,9 +769,9 @@ void breadcrumbs(string[] labels, string[] urlPaths = null)
 Breadcrumbs with an explicit trail (streamlitd only). `urlPaths[i]` makes item i a link to that app page (null or missing: plain text); the last item is the current position.
 
 ```d
-string userMenu(string[] items = null, bool logout = true, string key = null, bool account = true)
+string userMenu(string[] items = null, bool logout = true, string key = null, bool account = true, bool rerun = false, bool appearance = false)
 ```
-The user menu in the header bar: the logged-in user's picture (or initials) and name, opening a menu with `items` and "Log out". Returns the item clicked in this run, otherwise null. Signed out, it shows a "Log in" button; without `[auth]` configured it shows nothing. It is always placed in `st.topbar`, wherever it is called. With `account`, users from the user store also get "Account settings" (name, email, password: `/auth/account`).
+The user menu in the header bar: the logged-in user's picture (or initials) and name, opening a menu with `items` and "Log out". Returns the item clicked in this run, otherwise null. Signed out, it shows a "Log in" button; without `[auth]` configured it shows nothing. It is always placed in `st.topbar`, wherever it is called. With `account`, users from the user store also get "Account settings" (name, email, password: `/auth/account`). `rerun` and `appearance` add "Rerun" and "Appearance…" (the header's ⟳ and ⚙, e.g. with `[ui] rerunButton = "hidden"`).
 
 ## Custom components
 
@@ -917,9 +927,9 @@ void sleep(double seconds)
 Sleep without blocking other sessions (yields to the event loop).
 
 ```d
-void setPageConfig(string title = null, string icon = null, Layout layout = Layout.centered, string initialSidebarState = "auto", string theme = null, bool allowThemeSwitch = true, string colorScheme = null, string design = null)
+void setPageConfig(string title = null, string icon = null, Layout layout = Layout.centered, string initialSidebarState = "auto", string theme = null, bool allowThemeSwitch = true, string colorScheme = null, string design = null, string rerunButton = null, string settingsButton = null)
 ```
-Configure the page (`st.set_page_config`). `icon` is the browser-tab favicon: an emoji, an http(s)/data URL, or a local image file. `colorScheme` (alias `theme`) and `design` select the color scheme and design style (see `colorSchemeNames`, `designNames`); `allowThemeSwitch: false` hides the viewer's appearance menu.
+Configure the page (`st.set_page_config`). `icon` is the browser-tab favicon: an emoji, an http(s)/data URL, or a local image file. `colorScheme` (alias `theme`) and `design` select the color scheme and design style (see `colorSchemeNames`, `designNames`); `allowThemeSwitch: false` hides the viewer's appearance menu. `rerunButton` and `settingsButton` ("header", "menu" or "hidden") move the header's ⟳ and ⚙ (default: `[ui]` in config.toml); they apply until changed.
 
 ```d
 void setTheme(string scheme = null, string mode = null, string design = null)
@@ -1919,8 +1929,16 @@ A design style from `[theme.designs.<name>]` (see `registerDesign`).
 #### `struct ElementConfig`
 A custom element's browser files from `[elements.<name>]` (see `registerElement`).
 
+#### `struct UiOptions`
+Server settings (see `serve`). Where the header's rerun (⟳) and appearance (⚙) buttons go (`[ui]`).
+
+```d
+string uiPlacement(string v, string what)
+```
+Check a `[ui]` placement value ("header", "menu", "hidden").
+
 #### `struct UserCommand`
-Server settings (see `serve`). A user-management command given on the command line.
+A user-management command given on the command line.
 
 ```d
 string[] configSearchPaths()

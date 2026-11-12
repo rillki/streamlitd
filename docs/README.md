@@ -42,7 +42,7 @@ The [`examples/`](../examples) folder contains runnable apps. Each one is used b
 
 | Example | Shows |
 |---|---|
-| `hello` | the smallest app: text, input, button, session state, sidebar |
+| `hello` | the smallest app: text, input, button, session state, sidebar (with an appearance button) |
 | `widgets` | every input widget, layout containers, forms, status elements, and the extra elements (tab **More**) |
 | `data` | DataFrame, dataframe/table/data editor, all chart types, upload/download, images |
 | `multipage` | top navigation with a section, breadcrumbs, header bar, banner, footer, menu button, pagination, chat UI, query params |

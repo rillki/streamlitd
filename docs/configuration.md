@@ -51,6 +51,11 @@ baseRadius = "6px"           # also font, headingFont, codeFont, strokeWidth, ba
 js = "ui/rating.js"
 css = "ui/rating.css"
 
+[ui]                         # header controls, see layout-and-navigation.md
+rerunButton = "header"       # --rerun-button: header | menu (one ⋮ menu) | hidden
+settingsButton = "header"    # --settings-button: the appearance ⚙, same values
+rerunShortcut = true         # false = the R key does not rerun (--no-rerun-shortcut)
+
 [map]
 tileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 attribution = "&copy; OpenStreetMap contributors"
@@ -93,6 +98,7 @@ warning at startup. An existing `.streamlit/config.toml` can stay as it is.
 | `STREAMLITD_SERVER_HEADLESS` | `[server] headless` |
 | `STREAMLITD_SERVER_FAVICON` | `[server] favicon` |
 | `STREAMLITD_SERVER_TRUSTPROXY` | `[server] trustProxy` |
+| `STREAMLITD_UI_RERUNBUTTON`, `_SETTINGSBUTTON`, `_RERUNSHORTCUT` | `[ui] rerunButton`, `settingsButton`, `rerunShortcut` |
 | `STREAMLITD_AUTH_REQUIRED`, `_REGISTRATION`, `_USERS_FILE`, `_COOKIE_SECRET`, `_PASSWORD_MIN_LENGTH`, `_REQUIRE_EMAIL` | the `[auth]` keys; they win over `config.toml` and `secrets.toml` |
 | `STREAMLITD_API_DOCS` (`true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`) | `[api] docs` |
 | `STREAMLITD_API_DOCSPATH`, `_SPECPATH`, `_TITLE`, `_VERSION` | `[api] docsPath`, `specPath`, `title`, `version` |
@@ -120,6 +126,8 @@ warning at startup. An existing `.streamlit/config.toml` can stay as it is.
 | `--color-scheme` (alias `--theme`), `--theme-mode` | `streamlit`, `auto` | color scheme and mode |
 | `--theme.<key>=<value>` | | any theme token, e.g. `--theme.primaryColor=#123456` |
 | `--no-theme-switch` | | hide the viewer style menu |
+| `--rerun-button`, `--settings-button` | `header` | where ⟳ and ⚙ go: `header`, `menu` (one ⋮ menu) or `hidden` |
+| `--no-rerun-shortcut` | | the R key does not rerun the app |
 | `--auth-required` | | require login for the whole app |
 | `--favicon <file>` | streamlitd icon | favicon image for every page (svg, png, ico, …) |
 | `--api-docs`, `--api-docs=false` | off | serve the OpenAPI document and Swagger UI ([API endpoints](api-endpoints.md#openapi-and-swagger-ui)) |

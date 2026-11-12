@@ -284,13 +284,19 @@ final class St
 	/// Configure the page (`st.set_page_config`). `icon` is the browser-tab favicon: an emoji, an
 	/// http(s)/data URL, or a local image file. `colorScheme` (alias `theme`) and `design`
 	/// select the color scheme and design style (see `colorSchemeNames`, `designNames`);
-	/// `allowThemeSwitch: false` hides the viewer's appearance menu.
+	/// `allowThemeSwitch: false` hides the viewer's appearance menu. `rerunButton` and
+	/// `settingsButton` ("header", "menu" or "hidden") move the header's ⟳ and ⚙ (default: `[ui]`
+	/// in config.toml); they apply until changed.
 	void setPageConfig(string title = null, string icon = null, Layout layout = Layout.centered,
 		string initialSidebarState = "auto", string theme = null, bool allowThemeSwitch = true,
-		string colorScheme = null, string design = null)
+		string colorScheme = null, string design = null, string rerunButton = null, string settingsButton = null)
 	{
+		foreach (v; [rerunButton, settingsButton])
+			if (v !is null && v != "header" && v != "menu" && v != "hidden")
+				throw new StreamlitAPIException(`setPageConfig(): rerunButton and settingsButton must be "header", "menu" or "hidden", not "` ~ v ~ `"`);
 		sess.send(jo("type", "page_config", "title", title, "icon", faviconSrc(icon),
-			"layout", layout == Layout.wide ? "wide" : "centered", "sidebarState", initialSidebarState));
+			"layout", layout == Layout.wide ? "wide" : "centered", "sidebarState", initialSidebarState,
+			"rerunButton", rerunButton, "settingsButton", settingsButton));
 		if (theme !is null || colorScheme !is null || design !is null || !allowThemeSwitch)
 		{
 			Theme t = currentTheme();

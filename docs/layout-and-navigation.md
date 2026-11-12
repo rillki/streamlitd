@@ -263,6 +263,45 @@ settings** (for accounts in the user store: name, email and password on `/auth/a
 off with `account: false`) and **Log out** (`logout: false` hides it).
 It returns the item picked in this run, otherwise null, like a button. Signed out, it shows a
 **Log in** button; without `[auth]` configured it shows nothing. See [Authentication](authentication.md).
+`rerun: true` and `appearance: true` add **Rerun** and **Appearance…** items (see below).
+
+### Header controls: rerun and appearance
+
+The header's ⟳ (rerun the app) and ⚙ (the viewer's [appearance panel](theming.md#the-viewer-appearance-menu))
+can stay there, move into one ⋮ menu, or leave the header so the app places them itself.
+
+```toml
+# .streamlitd/config.toml
+[ui]
+rerunButton = "menu"       # "header" (default) | "menu" | "hidden"
+settingsButton = "hidden"  # "header" (default) | "menu" | "hidden"
+rerunShortcut = true       # the R key reruns the app, also when the button is hidden
+```
+
+- **`header`:** the icon in the header (the default).
+- **`menu`:** a ⋮ button in the header with **Rerun** and **Appearance…**. It shows only the
+  items set to `menu`.
+- **`hidden`:** not in the header. Place them yourself, wherever you like:
+
+<!-- wrap -->
+```d
+st.setPageConfig(rerunButton: "hidden", settingsButton: "hidden");   // this app only (default: [ui])
+st.sidebar.settingsButton();                  // "⚙ Appearance": opens the panel next to it
+st.footer.rerunButton("Refresh data", "🔄");   // reruns the whole app
+st.userMenu(["Profile"], rerun: true, appearance: true);   // or as user-menu items
+```
+
+The appearance panel opens next to whatever opened it (also inside a popover or dialog) and stays
+inside the window; Esc or a click elsewhere closes it.
+
+**Other ways to set it:**
+- environment: `STREAMLITD_UI_RERUNBUTTON`, `STREAMLITD_UI_SETTINGSBUTTON`,
+  `STREAMLITD_UI_RERUNSHORTCUT`;
+- command line: `--rerun-button`, `--settings-button`, `--no-rerun-shortcut`;
+- `st.setPageConfig(rerunButton:, settingsButton:)` overrides `[ui]` until changed.
+
+When the app does not let viewers change the appearance at all (`[theme] allowSwitch = false`,
+`allowThemeSwitch: false`), ⚙, its menu item and `st.settingsButton()` are not shown anywhere.
 
 ## Query parameters
 

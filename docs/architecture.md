@@ -46,10 +46,10 @@ All messages are JSON over one WebSocket per tab (`<base>/_stcore/ws`).
 
 | Message | Meaning |
 |---|---|
-| `new_session` | `sessionId`, color schemes (`themes`), design styles (`designs`), default theme |
+| `new_session` | `sessionId`, color schemes (`themes`), design styles (`designs`), default theme, header controls (`ui`: `rerunButton`, `settingsButton`, `rerunShortcut`) |
 | `script_started` / `script_finished` | run boundaries: `run` id, `status` (`ok`, `error`, `stopped`, `rerun`), `fragment` + `path` for fragment runs |
 | `delta` | `path` (e.g. `[0, 3, 1]`) + `el` (element JSON with `kind`, and `block` for containers) |
-| `page_config`, `set_theme`, `navigation`, `set_page`, `query_params`, `toast`, `effect`, `logo`, `navigate` | page-level effects (`navigate` to `auth/login` gets `?next=<current page>` in the browser, so the login returns there) |
+| `page_config` (also `rerunButton`/`settingsButton` overrides), `set_theme`, `navigation`, `set_page`, `query_params`, `toast`, `effect`, `logo`, `navigate` | page-level effects (`navigate` to `auth/login` gets `?next=<current page>` in the browser, so the login returns there) |
 
 Paths start with a root: `0` main area, `1` sidebar, `2` bottom (chat input), `3` dialogs, `4` header bar
 (`st.topbar`, `userMenu`), `5` footer (`st.footer`), `6` banners (`st.banner`). Roots 1, 2, 4, 5 and 6 are

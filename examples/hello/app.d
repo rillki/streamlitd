@@ -23,6 +23,8 @@ void app(St st)
 		header("Sidebar");
 		auto mood = selectbox("Mood", ["😀 happy", "😐 neutral", "😢 sad"]);
 		write("You feel", mood);
+		// the appearance panel can open from anywhere, not only from ⚙ in the header
+		settingsButton();
 	}
 }
 

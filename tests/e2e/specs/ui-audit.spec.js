@@ -215,6 +215,28 @@ test("login, sign-up and account pages, and the admin panel", async ({ browser }
   expect(findings, summary(findings)).toEqual([]);
 });
 
+test("header controls: the ⋮ menu and the appearance panel opened from the sidebar", async ({ browser }) => {
+  test.setTimeout(120000);
+  const findings = [];
+  for (const design of ["streamlit", "terminal", "win95", "glass"]) for (const mode of ["light", "dark"]) {
+    let page = await openWith(browser, "hello-menu", { scheme: "streamlit", design, mode });
+    await page.getByTestId("st-app-menu").click();
+    findings.push(...(await audit(page, `hello-menu:${design}/${mode} / ⋮ menu`)));
+    await page.getByRole("menuitem", { name: /Appearance/ }).click();
+    findings.push(...(await audit(page, `hello-menu:${design}/${mode} / panel from ⋮`)));
+    await page.context().close();
+    for (const vp of [null, { width: 390, height: 800 }]) {
+      page = await openWith(browser, "hello", { scheme: "streamlit", design, mode }, vp);
+      if (vp) await page.getByRole("button", { name: "Open sidebar" }).click();
+      await page.getByTestId("st-settings-button").click();
+      findings.push(...(await audit(page, `hello:${design}/${mode}${vp ? " (phone)" : ""} / panel from the sidebar`)));
+      await page.context().close();
+    }
+  }
+  report("header-controls", findings);
+  expect(findings, summary(findings)).toEqual([]);
+});
+
 test("no native browser pop-up controls anywhere", async ({ browser }) => {
   for (const app of ["hello", "widgets", "data", "themes", "fragments", "multipage", "extras", "tutorial", "custom"]) {
     const page = await openWith(browser, app, { scheme: "streamlit", design: "streamlit", mode: "light" });

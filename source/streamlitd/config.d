@@ -53,6 +53,22 @@ struct ElementConfig
 }
 
 /// Server settings (see `serve`).
+/// Where the header's rerun (⟳) and appearance (⚙) buttons go (`[ui]`).
+struct UiOptions
+{
+	string rerunButton = "header";    /// "header", "menu" (one ⋮ menu in the header) or "hidden"
+	string settingsButton = "header"; /// ditto, for the appearance panel
+	bool rerunShortcut = true;        /// the R key reruns the app (also when the button is hidden)
+}
+
+/// Check a `[ui]` placement value ("header", "menu", "hidden").
+string uiPlacement(string v, string what)
+{
+	if (v != "header" && v != "menu" && v != "hidden")
+		throw new Exception(what ~ ` must be "header", "menu" or "hidden", not "` ~ v ~ `"`);
+	return v;
+}
+
 /// A user-management command given on the command line.
 struct UserCommand
 {
@@ -104,6 +120,8 @@ struct ServerOptions
 	/// and logs), using the last entry, which the proxy appends. Only enable it when a proxy is
 	/// always in front of the app (`[server] trustProxy`).
 	bool trustProxy;
+	/// Header controls (`[ui]`): where the rerun and appearance buttons go.
+	UiOptions ui;
 	/// OpenAPI / Swagger UI settings (`[api]`).
 	ApiDocsOptions api;
 	/// Color schemes, design styles and elements defined in config files; `serve` registers them.
@@ -235,6 +253,16 @@ string[] applyConfig(ref ServerOptions o, Json cfg)
 		if (o.api.docsPath == o.api.specPath)
 			throw new Exception("[api] docsPath and specPath must differ");
 	}
+	auto ui = cfg["ui"];
+	if (ui.type == Json.Type.object)
+		foreach (string k, v; ui)
+			switch (k)
+			{
+				case "rerunButton": o.ui.rerunButton = uiPlacement(v.get!string, "[ui] rerunButton"); break;
+				case "settingsButton": o.ui.settingsButton = uiPlacement(v.get!string, "[ui] settingsButton"); break;
+				case "rerunShortcut": o.ui.rerunShortcut = boolValue(v, "[ui] rerunShortcut"); break;
+				default: warnings ~= "ignoring unsupported [ui] option '" ~ k ~ "'";
+			}
 	auto els = cfg["elements"];
 	if (els.type == Json.Type.object)
 		foreach (string name, def; els)
@@ -253,7 +281,7 @@ string[] applyConfig(ref ServerOptions o, Json cfg)
 			upsert(o.elements, e);
 		}
 	foreach (string sec, _; cfg)
-		if (!["server", "theme", "map", "auth", "api", "elements"].canFind(sec))
+		if (!["server", "theme", "map", "auth", "api", "elements", "ui"].canFind(sec))
 			warnings ~= "ignoring unsupported config section [" ~ sec ~ "]";
 	return warnings;
 }
@@ -414,6 +442,14 @@ void applyEnv(ref ServerOptions o, string[string] env)
 	foreach (k; themeKeys)
 		if (auto v = ("STREAMLITD_THEME_" ~ k.toUpper) in env)
 			cfg["theme"][k] = *v;
+	static immutable uiKeys = ["rerunButton", "settingsButton", "rerunShortcut"];
+	foreach (k; uiKeys)
+		if (auto v = ("STREAMLITD_UI_" ~ k.toUpper) in env)
+		{
+			if (cfg["ui"].type != Json.Type.object)
+				cfg["ui"] = Json.emptyObject;
+			cfg["ui"][k] = *v; // rerunShortcut: true/false, 1/0, yes/no, on/off
+		}
 	static immutable apiKeys = ["docs", "docsPath", "specPath", "title", "version"];
 	foreach (k; apiKeys)
 		if (auto v = ("STREAMLITD_API_" ~ k.toUpper) in env)

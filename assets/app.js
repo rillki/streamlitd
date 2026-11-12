@@ -195,6 +195,8 @@
     switch (msg.type) {
       case "new_session":
         S.sessionId = msg.sessionId;
+        S.uiServer = msg.ui || null;
+        applyChrome();
         if (msg.themes) T.presets = msg.themes;
         if (msg.designs) T.designs = msg.designs;
         if (msg.theme) T.server = msg.theme;
@@ -562,7 +564,8 @@
       const inner = h("div", { class: "block-vertical" });
       panel.appendChild(inner);
       btn.addEventListener("click", (ev) => { ev.stopPropagation(); panel.hidden = !panel.hidden; });
-      const close = (ev) => { if (!wrap.contains(ev.target) && !StUI.inPopup(ev.target)) panel.hidden = true; };
+      // clicks in pop-ups and in the appearance panel (st.settingsButton() inside) keep it open
+      const close = (ev) => { if (!wrap.contains(ev.target) && !StUI.inPopup(ev.target) && !ev.target.closest("#stSettingsPanel")) panel.hidden = true; };
       document.addEventListener("click", close);
       wrap.append(btn, panel);
       node.wrap.appendChild(wrap);
@@ -737,9 +740,13 @@
         "aria-label": "User menu: " + (el.name || "") },
         avatarEl(el.name || el.email, el.picture, "small"), h("span", { class: "user-menu-name", text: el.name || "" }),
         h("span", { class: "caret", "aria-hidden": "true", text: "▾" }));
-      const LOGOUT = "\u0000logout", ACCOUNT = "\u0000account";
+      const LOGOUT = "\u0000logout", ACCOUNT = "\u0000account", RERUN = "\u0000rerun", APPEARANCE = "\u0000appearance";
       StUI.attachMenu(btn, () => {
         const items = (el.items || []).map((label) => label === "-" ? { separator: true } : { label, value: label });
+        const extra = [];
+        if (el.rerun) extra.push({ label: "Rerun", value: RERUN, icon: "⟳", hint: uiSettings().rerunShortcut ? "R" : null });
+        if (el.appearance && S.settingsAllowed !== false) extra.push({ label: "Appearance…", value: APPEARANCE, icon: "⚙" });
+        if (extra.length) { if (items.length) items.push({ separator: true }); items.push(...extra); }
         if (el.account || el.logout) { if (items.length) items.push({ separator: true }); }
         if (el.account) items.push({ label: "Account settings", value: ACCOUNT, href: "auth/account", icon: "⚙" });
         if (el.logout) items.push({ label: "Log out", value: LOGOUT, icon: "⎋" });
@@ -748,6 +755,8 @@
       }, (it) => {
         if (it.value === LOGOUT) location.href = "auth/logout";
         else if (it.value === ACCOUNT) location.href = "auth/account";
+        else if (it.value === RERUN) sendRerun({});
+        else if (it.value === APPEARANCE) openSettings(btn);
         else triggerWidget(el, it.value);
       },
       { label: "User menu", alignRight: true });
@@ -1371,6 +1380,24 @@
         timer = setTimeout(() => { label.textContent = el.label || "Copy"; live.textContent = ""; }, 1500);
       });
       node.wrap.appendChild(h("div", { class: "widget" }, b, live));
+    },
+
+    // st.rerunButton(): the header's ⟳, anywhere
+    rerun_button(node, el) {
+      const b = h("button", { type: "button", class: "st-btn secondary", title: el.help || null, "data-testid": "st-rerun-button" },
+        el.icon ? h("span", { "aria-hidden": "true", text: el.icon }) : null, h("span", { text: el.label || "Rerun" }));
+      b.addEventListener("click", () => sendRerun({}));
+      node.wrap.appendChild(h("div", { class: "widget" }, b));
+    },
+
+    // st.settingsButton(): opens the appearance panel next to it (nothing while viewers may not change it)
+    settings_button(node, el) {
+      const b = h("button", { type: "button", class: "st-btn secondary", title: el.help || null, "data-testid": "st-settings-button",
+        "aria-haspopup": "dialog", "aria-expanded": "false" },
+        el.icon ? h("span", { "aria-hidden": "true", text: el.icon }) : null, h("span", { text: el.label || "Appearance" }));
+      b.addEventListener("click", () => toggleSettings(b));
+      node.wrap.appendChild(h("div", { class: "widget" }, b));
+      showSettingsButton(node.wrap);
     },
 
     avatar(node, el) {
@@ -2113,7 +2140,9 @@
   }
   function renderSettings() {
     const eff = T.current || effectiveTheme();
-    $("#stSettingsWrap").hidden = !eff.allow;
+    S.settingsAllowed = !!eff.allow;
+    if (!eff.allow) closeSettings();
+    applyChrome();
     document.querySelectorAll("#stModeSeg button").forEach((b) => {
       b.classList.toggle("active", b.dataset.mode === eff.mode);
       b.setAttribute("aria-pressed", b.dataset.mode === eff.mode ? "true" : "false");
@@ -2179,7 +2208,108 @@
     app.classList.toggle("has-header", !!S.topNav || topbar);
   }
 
+  // ------------------------------------------------------------------ header controls (⟳, ⚙, ⋮)
+  // [ui] from the server, overridden by st.setPageConfig(rerunButton:, settingsButton:)
+  function uiSettings() {
+    const s = S.uiServer || {}, p = S.uiPage || {};
+    return {
+      rerunButton: p.rerunButton || s.rerunButton || "header",
+      settingsButton: p.settingsButton || s.settingsButton || "header",
+      rerunShortcut: s.rerunShortcut !== false,
+    };
+  }
+  // st.settingsButton() elements are hidden while viewers may not change the appearance
+  function showSettingsButton(wrap) {
+    const off = S.settingsAllowed === false;
+    wrap.hidden = off;
+    if (off) wrap.dataset.empty = "1"; else delete wrap.dataset.empty;
+  }
+  function applyChrome() {
+    let changed = false;
+    document.querySelectorAll('[data-testid="st-settings-button"]').forEach((b) => {
+      const wrap = b.closest(".element-container");
+      if (wrap && wrap.hidden !== (S.settingsAllowed === false)) { showSettingsButton(wrap); changed = true; }
+    });
+    if (changed) updateSidebarVisibility();
+    const u = uiSettings(), allowed = S.settingsAllowed !== false;
+    $("#stRerun").hidden = u.rerunButton !== "header";
+    $("#stSettingsWrap").hidden = !allowed || u.settingsButton !== "header";
+    $("#stAppMenu").hidden = !(u.rerunButton === "menu" || (allowed && u.settingsButton === "menu"));
+    $("#stRerun").title = u.rerunShortcut ? "Rerun (R)" : "Rerun";
+  }
+
+  // The appearance panel opens next to whatever opened it: ⚙ in the header, the ⋮ menu,
+  // st.settingsButton() anywhere, or the user menu. It lives in <body> with position: fixed.
+  // `resize` (opening, window size): choose the side and the height again; otherwise only follow
+  // the anchor (scrolling), keeping the size, so scrolling inside the panel never moves it
+  function placeSettings(resize) {
+    const p = $("#stSettingsPanel"), a = S.settingsAnchor;
+    if (p.hidden || !a) return;
+    if (resize === false && S.settingsSide) {
+      const r = a.getBoundingClientRect(), vw = document.documentElement.clientWidth, vh = window.innerHeight;
+      const w = p.offsetWidth, hh = p.offsetHeight;
+      const left = Math.max(8, Math.min(S.settingsSide.right ? r.right - w : r.left, vw - w - 8));
+      const top = Math.max(8, Math.min(S.settingsSide.down ? r.bottom + 4 : r.top - 4 - hh, vh - hh - 8));
+      p.style.left = left + "px";
+      p.style.top = top + "px";
+      return;
+    }
+    // the button that opened it is gone or hidden (e.g. its popover or tab closed)
+    if (!a.isConnected || !a.getClientRects().length) { closeSettings(); return; }
+    const r = a.getBoundingClientRect(), vw = document.documentElement.clientWidth, vh = window.innerHeight;
+    const gap = 4, m = 8;
+    // below the anchor if it fits, else above; else on the larger side, scrolling inside,
+    // so the panel never covers the button that opened it
+    p.style.maxHeight = "";
+    const natural = p.scrollHeight;
+    const below = vh - r.bottom - gap - m, above = r.top - gap - m;
+    const down = natural <= below || (natural > above && below >= above);
+    const room = Math.max(120, down ? below : above);
+    if (natural > room) p.style.maxHeight = room + "px";
+    const w = p.offsetWidth, hh = p.offsetHeight;
+    const right = !!a.closest("#st-header") || r.left > vw / 2;
+    S.settingsSide = { down, right };
+    let left = right ? r.right - w : r.left;
+    left = Math.max(m, Math.min(left, vw - w - m));
+    let top = down ? r.bottom + gap : r.top - gap - hh;
+    top = Math.max(m, Math.min(top, vh - hh - m));
+    p.style.left = left + "px";
+    p.style.top = top + "px";
+    p.style.right = "auto";
+  }
+  function openSettings(anchor) {
+    if (S.settingsAllowed === false) return;
+    const p = $("#stSettingsPanel");
+    if (S.settingsAnchor && S.settingsAnchor !== anchor) S.settingsAnchor.setAttribute("aria-expanded", "false");
+    S.settingsAnchor = anchor;
+    anchor.setAttribute("aria-expanded", "true");
+    if (!anchor.hasAttribute("aria-controls")) anchor.setAttribute("aria-controls", "stSettingsPanel");
+    p.hidden = false;
+    placeSettings(true);
+    // the click that opened it must not close it again on its way up to the document
+    S.settingsJustOpened = true;
+    setTimeout(() => { S.settingsJustOpened = false; }, 0);
+    const first = p.querySelector("#stModeSeg button.active") || p.querySelector("button");
+    if (first && anchor !== $("#stSettings")) first.focus();
+  }
+  function closeSettings(refocus) {
+    const p = $("#stSettingsPanel"), a = S.settingsAnchor;
+    if (p.hidden) return;
+    p.hidden = true;
+    if (a) { a.setAttribute("aria-expanded", "false"); if (refocus && a.isConnected) a.focus(); }
+    S.settingsAnchor = null;
+  }
+  function toggleSettings(anchor) {
+    if (!$("#stSettingsPanel").hidden && S.settingsAnchor === anchor) closeSettings();
+    else openSettings(anchor);
+  }
+
   function applyPageConfig(m) {
+    if (m.rerunButton || m.settingsButton) {
+      S.uiPage = Object.assign({}, S.uiPage, m.rerunButton ? { rerunButton: m.rerunButton } : {},
+        m.settingsButton ? { settingsButton: m.settingsButton } : {});
+      applyChrome();
+    }
     if (m.title) { document.title = m.title; S.pageConfig.title = m.title; $("#stRoot-0").dataset.title = m.title; }
     if (m.icon) { setFavicon(m.icon); S.iconSetThisRun = true; }
     const app = document.getElementById("stApp");
@@ -2301,18 +2431,45 @@
   }
 
   // ------------------------------------------------------------------ theme & chrome events
-  $("#stSettings").addEventListener("click", (ev) => { ev.stopPropagation(); $("#stSettingsPanel").hidden = !$("#stSettingsPanel").hidden; });
-  document.addEventListener("click", (ev) => { if (!$("#stSettingsWrap").contains(ev.target) && !StUI.inPopup(ev.target)) { $("#stSettingsPanel").hidden = true; } });
+  $("#stSettings").addEventListener("click", () => toggleSettings($("#stSettings")));
+  document.addEventListener("click", (ev) => {
+    const p = $("#stSettingsPanel");
+    if (p.hidden || S.settingsJustOpened) return;
+    const t = ev.target;
+    if (p.contains(t) || (S.settingsAnchor && S.settingsAnchor.contains(t)) || StUI.inPopup(t)) return;
+    closeSettings();
+  });
+  document.addEventListener("keydown", (ev) => {
+    // Esc closes the panel (a pop-up open inside it closes first); captured, so a dialog the
+    // panel was opened from stays open
+    if (ev.key !== "Escape" || $("#stSettingsPanel").hidden || document.querySelector("#stPopups .st-popup")) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    closeSettings(true);
+  }, true);
+  window.addEventListener("resize", () => placeSettings(true));
+  window.addEventListener("scroll", (ev) => {
+    const t = ev.target;
+    if (t instanceof Element && (t.closest("#stSettingsPanel") || t.closest("#stPopups"))) return;
+    placeSettings(false);
+  }, true);
   document.querySelectorAll("#stModeSeg button").forEach((b) => b.addEventListener("click", () => setViewer({ mode: b.dataset.mode })));
 
   if (darkMq) darkMq.addEventListener("change", () => { T.lastKey = null; applyTheme(); });
   $("#stRerun").addEventListener("click", () => sendRerun({}));
+  // ⋮: the header controls the app put in a menu ([ui] rerunButton / settingsButton = "menu")
+  StUI.attachMenu($("#stAppMenu"), () => {
+    const u = uiSettings(), items = [];
+    if (u.rerunButton === "menu") items.push({ label: "Rerun", value: "rerun", icon: "⟳", hint: u.rerunShortcut ? "R" : null });
+    if (u.settingsButton === "menu" && S.settingsAllowed) items.push({ label: "Appearance…", value: "settings", icon: "⚙" });
+    return items;
+  }, (it) => { if (it.value === "rerun") sendRerun({}); else openSettings($("#stAppMenu")); }, { label: "App menu", alignRight: true });
   $("#stSidebarClose").addEventListener("click", () => document.getElementById("stApp").classList.add("sidebar-collapsed"));
   $("#stSidebarOpen").addEventListener("click", () => document.getElementById("stApp").classList.remove("sidebar-collapsed"));
   document.addEventListener("keydown", (ev) => {
     const tag = (ev.target && ev.target.tagName) || "";
     if (/INPUT|TEXTAREA|SELECT/.test(tag) || ev.ctrlKey || ev.metaKey || ev.altKey) return;
-    if (ev.key === "r" || ev.key === "R") sendRerun({});
+    if ((ev.key === "r" || ev.key === "R") && uiSettings().rerunShortcut) sendRerun({});
   });
 
   // The logo goes to the top of the sidebar, and to the header while the sidebar is hidden or collapsed.
@@ -2328,6 +2485,8 @@
   }
 
   for (const i of [0, 1, 2, 3, 4, 5, 6]) S.roots[i] = makeRoot(i);
+  // the appearance panel floats next to whichever button opened it (see openSettings)
+  document.body.appendChild($("#stSettingsPanel"));
   // like Streamlit: on narrow screens the sidebar starts collapsed (it would cover the page)
   if (window.matchMedia && window.matchMedia("(max-width: 800px)").matches) document.getElementById("stApp").classList.add("sidebar-collapsed");
   $("#stRoot-0").dataset.title = document.title; // used by designs that draw a window title bar

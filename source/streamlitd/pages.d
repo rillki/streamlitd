@@ -156,8 +156,11 @@ mixin template PageElements()
 	/// a menu with `items` and "Log out". Returns the item clicked in this run, otherwise null.
 	/// Signed out, it shows a "Log in" button; without `[auth]` configured it shows nothing.
 	/// It is always placed in `st.topbar`, wherever it is called. With `account`, users from the
-	/// user store also get "Account settings" (name, email, password: `/auth/account`).
-	string userMenu(string[] items = null, bool logout = true, string key = null, bool account = true)
+	/// user store also get "Account settings" (name, email, password: `/auth/account`). `rerun` and
+	/// `appearance` add "Rerun" and "Appearance…" (the header's ⟳ and ⚙, e.g. with
+	/// `[ui] rerunButton = "hidden"`).
+	string userMenu(string[] items = null, bool logout = true, string key = null, bool account = true,
+		bool rerun = false, bool appearance = false)
 	{
 		import std.array : join;
 		auto u = user;
@@ -166,7 +169,8 @@ mixin template PageElements()
 		auto shown = u.name.length ? u.name : u.email.length ? u.email : u.sub;
 		auto p = jo("items", items, "auth", sess.authEnabled, "logout", logout && sess.authEnabled,
 			"loggedIn", u.isLoggedIn, "name", shown, "email", u.email,
-			"account", account && u.isLoggedIn && sess.user["store"].opt!bool(false));
+			"account", account && u.isLoggedIn && sess.user["store"].opt!bool(false),
+			"rerun", rerun, "appearance", appearance);
 		if (u.isLoggedIn && sess.user["picture"].type == Json.Type.string)
 			p["picture"] = sess.user["picture"];
 		return tb.widget!string("user_menu", id, key, null, (string v) => Json(v), (Json j) {

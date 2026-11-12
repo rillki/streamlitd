@@ -235,6 +235,21 @@ mixin template Elements()
 		emit(jo("kind", "timeline", "items", a));
 	}
 
+	/// A button that reruns the whole app, like ⟳ in the header (streamlitd only). Place it anywhere,
+	/// e.g. `st.sidebar.rerunButton()` with `[ui] rerunButton = "hidden"`.
+	void rerunButton(string label = "Rerun", string icon = "⟳", string help = null)
+	{
+		emit(jo("kind", "rerun_button", "label", label, "icon", icon, "help", help));
+	}
+
+	/// A button that opens the viewer's appearance panel (mode, design style, color scheme) next to
+	/// it, like ⚙ in the header (streamlitd only). It shows nothing while the app does not let
+	/// viewers change the appearance (`[theme] allowSwitch = false`).
+	void settingsButton(string label = "Appearance", string icon = "⚙", string help = null)
+	{
+		emit(jo("kind", "settings_button", "label", label, "icon", icon, "help", help));
+	}
+
 	/// `st.exception`
 	void exception(Throwable e)
 	{
