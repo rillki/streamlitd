@@ -55,6 +55,8 @@ fragments and dialogs behave as in the browser.
 | `.customElements(name)` | the custom elements and widgets named `name` (`st.customElement`, `st.customWidget`; see [Extending](extending.md)) |
 | `.exceptions` | errors shown in the page |
 | `.messages(type)` | other messages of the last run (`toast`, `navigation`, `set_theme`, …) |
+| `.loginAs(username, roles)`, `.logout()` | act as a logged-in user (`st.user`, roles); with `useAccounts`, a user from that store |
+| `AppTest.useAccounts(accounts)` | the account service for `st.accounts` and `st.userAdmin` (process-wide; `null` removes it) |
 | `.lastStatus` | `RunStatus.ok`, `error`, `stopped` |
 | `.session` | the session state |
 

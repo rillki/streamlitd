@@ -32,7 +32,7 @@ function inPageAudit() {
   };
   // third-party renderers manage their own clipping
   const SKIP = ".vega-wrap, .plotly-wrap, .map-wrap, iframe, svg, canvas, .katex, .st-cb-input, input, textarea, .code-block pre *, .json-view *, .df-wrap table *";
-  const roots = [...document.querySelectorAll("#stSettingsPanel, .st-popup, .dialog-box, #stSidebar, #stRoot-0, #stBottom, #st-header")].filter(visible);
+  const roots = [...document.querySelectorAll("#stSettingsPanel, .st-popup, .dialog-box, #stSidebar, #stRoot-0, #stBottom, #st-header, body > main.card")].filter(visible);
 
   // 1. horizontal page scroll
   if (document.documentElement.scrollWidth > vw + 1)
@@ -129,7 +129,7 @@ function inPageAudit() {
     while (layers.length) col = blend(layers.pop(), col);
     return col;
   };
-  const textSel = "label, p, span, a, button, summary, h1, h2, h3, li, td, th, .st-option-label, .metric-value, .metric-label, .alert, .markdown, .widget-label, .chip, .badge, .tab-btn, .seg button";
+  const textSel = "label, p, span, a, button, summary, h1, h2, h3, li, td, th, dt, dd, .muted, .st-option-label, .metric-value, .metric-label, .alert, .markdown, .widget-label, .chip, .badge, .tab-btn, .seg button";
   const seen = new Set();
   for (const root of roots) {
     for (const el of root.querySelectorAll(textSel)) {

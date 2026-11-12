@@ -22,6 +22,7 @@ import streamlitd.util;
 import streamlitd.theme;
 import streamlitd.executor;
 import streamlitd.authserver;
+import streamlitd.accounts : AccountError;
 import streamlitd.delta : UserInfo;
 import streamlitd.openapi;
 import streamlitd.extensions : registerElement, buildExtensionAssets, ExtensionAssets;
@@ -143,20 +144,6 @@ private final class WSTransport : Transport
 	}
 }
 
-/// Same-origin check for WebSocket and upload requests (protects against cross-site
-/// WebSocket hijacking). Requests without an Origin header (non-browser clients) pass.
-bool originAllowed(string origin, string host, const string[] allowed)
-{
-	import std.algorithm : canFind, startsWith;
-	if (origin.length == 0)
-		return true;
-	if (allowed.canFind("*") || allowed.canFind(origin))
-		return true;
-	foreach (scheme; ["http://", "https://"])
-		if (origin.startsWith(scheme) && origin[scheme.length .. $] == host)
-			return true;
-	return false;
-}
 
 unittest
 {
@@ -213,6 +200,7 @@ private void handleWS(scope WebSocket sock) @system
 	sess.defaultTheme = g_opts.theme;
 	sess.user = userFromRequest(g_auth, cast(HTTPServerRequest) sock.request);
 	sess.authEnabled = g_auth.enabled;
+	sess.authRequired = g_auth.required;
 	sess.mapTileUrl = g_opts.mapTileUrl;
 	sess.mapAttribution = g_opts.mapAttribution;
 	sess.allowThemeSwitch = g_opts.allowThemeSwitch;
@@ -351,7 +339,7 @@ private void serveIndex(HTTPServerRequest req, HTTPServerResponse res)
 	import std.array : replace;
 	if (g_auth.required && userFromRequest(g_auth, req).type == Json.Type.null_)
 	{
-		res.redirect(g_opts.baseUrlPath ~ "/auth/login");
+		res.redirect(loginRedirect(req));
 		return;
 	}
 	res.headers["Cache-Control"] = "no-cache";
@@ -539,6 +527,19 @@ UserInfo requireUser(HTTPServerRequest req, HTTPServerResponse res) @trusted
 	return u;
 }
 
+/// Like `requireUser`, but also answers 403 unless the user has `role` (e.g. "admin").
+/// ---
+/// r.delete_("/api/items/:id", (req, res) { requireRole(req, res, "editor"); ... });
+/// ---
+UserInfo requireRole(HTTPServerRequest req, HTTPServerResponse res, string role) @trusted
+{
+	import vibe.http.common : HTTPStatusException;
+	auto u = requireUser(req, res);
+	if (!u.hasRole(role))
+		throw new HTTPStatusException(403, "the " ~ role ~ " role is required");
+	return u;
+}
+
 /// Copies the app's routes onto `main`. With `[auth] required`, they answer 401 to anonymous requests.
 /// Returns the mounted routes (for the OpenAPI document).
 private AppRoute[] mountUserRoutes(URLRouter main, RoutesFn routes, const string[] reserved = null)
@@ -568,7 +569,7 @@ private void registerApiDocs(URLRouter router, string spec)
 		}));
 		router.get(g_opts.api.docsPath, (HTTPServerRequest req, HTTPServerResponse res) @trusted {
 			if (g_auth.required && userFromRequest(g_auth, req).type == Json.Type.null_)
-				return res.redirect(g_opts.baseUrlPath ~ "/auth/login");
+				return res.redirect(loginRedirect(req));
 			res.headers["Cache-Control"] = "no-cache";
 			res.writeBody(swaggerPage(g_opts.api.title, g_opts.baseUrlPath, g_opts.api.specPath), "text/html; charset=UTF-8");
 		});
@@ -648,7 +649,15 @@ int serve(AppFn app, ServerOptions opts = ServerOptions.init, RoutesFn routes = 
 			auto cfgAuth = opts.auth.type == Json.Type.object ? opts.auth.clone : Json.emptyObject;
 			if (opts.authRequired)
 				cfgAuth["required"] = true;
-			g_auth = loadAuthConfig(cfgAuth, secrets().get!Json("auth"), opts.baseUrlPath);
+			import streamlitd.secrets : deepMerge;
+			auto secAuth = secrets().get!Json("auth");
+			if (opts.authEnv.type == Json.Type.object) // env wins over both files
+				secAuth = deepMerge(secAuth.type == Json.Type.object ? secAuth : Json.emptyObject, opts.authEnv);
+			g_auth = loadAuthConfig(cfgAuth, secAuth, opts.baseUrlPath);
+			g_auth.trustProxy = opts.trustProxy;
+			g_auth.allowedOrigins = opts.allowedOrigins;
+			import streamlitd.accounts : setAccounts;
+			setAccounts(g_auth.enabled ? g_auth.accounts : null);
 		}
 		catch (Exception e)
 		{
@@ -663,6 +672,8 @@ int serve(AppFn app, ServerOptions opts = ServerOptions.init, RoutesFn routes = 
 		stderr.writeln("streamlitd: ", e.msg);
 		return 1;
 	}
+	// after setupExtensions: the app's scheme may come from [theme.schemes.*]
+	g_auth.pageColors = authPageColors(opts.theme);
 	if (opts.scriptThreads != 0)
 		startScriptWorkers(opts.scriptThreads < 0 ? 0 : cast(uint) opts.scriptThreads);
 
@@ -774,8 +785,179 @@ unittest
 	assertThrown(parseThemeOverrides(["--theme.nope=1"], t));
 }
 
+/// Run a user command (`--add-user`, `--list-users`, ...) on the configured user store.
+private int runUserCommand(ServerOptions o)
+{
+	import streamlitd.accounts : AccountError;
+	import streamlitd.secrets : secrets, deepMerge;
+	import std.stdio : writefln;
+	auto cmd = o.userCommand;
+	AuthConfig c;
+	try
+	{
+		auto secAuth = secrets().get!Json("auth");
+		if (o.authEnv.type == Json.Type.object)
+			secAuth = deepMerge(secAuth.type == Json.Type.object ? secAuth : Json.emptyObject, o.authEnv);
+		c = loadAuthConfig(o.auth.type == Json.Type.object ? o.auth.clone : Json.emptyObject, secAuth, o.baseUrlPath);
+	}
+	catch (Exception e)
+	{
+		stderr.writeln("streamlitd: auth configuration error: ", e.msg);
+		return 1;
+	}
+	if (!c.configured)
+	{
+		stderr.writeln("streamlitd: authentication is not configured. Add an [auth] section to .streamlitd/config.toml, e.g.\n",
+			"  [auth]\n  registration = \"first_admin\"   # or \"off\" to create every user with --add-user");
+		return 1;
+	}
+	auto acc = c.accounts;
+	try
+	{
+		switch (cmd.kind)
+		{
+			case "add":
+				auto pw = readNewPassword("Password for " ~ cmd.username);
+				auto u = acc.createUser(cmd.username, pw, cmd.name, cmd.email, cmd.roles);
+				writeln("created user ", u.username, u.roles.length ? " (roles: " ~ u.roles.join(", ") ~ ")" : "");
+				break;
+			case "set-password":
+				acc.setPassword(cmd.username, readNewPassword("New password for " ~ cmd.username));
+				writeln("password changed; existing logins of ", cmd.username, " ended");
+				break;
+			case "set-roles":
+				acc.setRoles(cmd.username, cmd.roles);
+				writeln("roles of ", cmd.username, ": ", cmd.roles.length ? cmd.roles.join(", ") : "(none)");
+				break;
+			case "delete":
+				acc.deleteUser(cmd.username);
+				writeln("deleted user ", cmd.username);
+				break;
+			case "reset-link":
+				writeln(acc.createResetLink(cmd.username));
+				stderr.writeln("(valid 24 hours, once; put your server's address in front of it)");
+				break;
+			case "list":
+				auto users = acc.users;
+				if (!users.length)
+					writeln("no users in the user store");
+				foreach (u; users)
+					writefln("%-24s %-20s %-28s %-16s %s%s", u.username, u.name, u.email, u.roles.join(","), u.status,
+						u.provider.length ? " (" ~ u.provider ~ ")" : "");
+				break;
+			default:
+				assert(0);
+		}
+	}
+	catch (AccountError e)
+	{
+		stderr.writeln("streamlitd: ", e.msg);
+		return 1;
+	}
+	return 0;
+}
+
+/// Ask for a new password twice without echo on a terminal; read one line from a pipe.
+private string readNewPassword(string prompt)
+{
+	import std.stdio : stdin, readln, write;
+	import std.string : chomp;
+	version (Posix)
+	{
+		import core.sys.posix.unistd : isatty;
+		import core.sys.posix.termios;
+		if (isatty(0))
+		{
+			string ask(string p)
+			{
+				stderr.write(p, ": ");
+				termios old, quiet;
+				tcgetattr(0, &old);
+				quiet = old;
+				quiet.c_lflag &= ~ECHO;
+				tcsetattr(0, TCSANOW, &quiet);
+				scope (exit) { tcsetattr(0, TCSANOW, &old); stderr.writeln(); }
+				return readln().chomp;
+			}
+			auto a = ask(prompt);
+			if (ask("Repeat it") != a)
+				throw new AccountError("The passwords do not match.");
+			return a;
+		}
+	}
+	return readln().chomp;
+}
+
+/// The login page, returning to the requested page afterwards.
+private string loginRedirect(HTTPServerRequest req)
+{
+	import std.uri : encodeComponent;
+	auto target = req.requestURI;
+	return g_opts.baseUrlPath ~ "/auth/login" ~ (target.length > 1 && target != g_opts.baseUrlPath ~ "/"
+		? "?next=" ~ encodeComponent(target) : "");
+}
+
+/// Primary color and text on it (light, dark) of the app's color scheme, for the login pages.
+package string[4] authPageColors(const Theme t)
+{
+	auto p = findPreset(t.scheme);
+	if (p is null)
+		return ["#ff4b4b", "#ffffff", "#ff4b4b", "#ffffff"];
+	auto l = p.light.merged(t.overrides), d = p.dark.merged(t.overrides);
+	string or(string a, string b) { return a.length ? a : b; }
+	auto lt = or(l.primaryTextColor, "#ffffff"), dt = or(d.primaryTextColor, "#ffffff");
+	return [readablePrimary(or(l.primaryColor, "#ff4b4b"), lt), lt, readablePrimary(or(d.primaryColor, "#ff4b4b"), dt), dt];
+}
+
+/// The primary color darkened (or lightened, for dark text) until `onPrimary` text on it reaches
+/// 4.5:1, like the app's `--primary-strong`.
+package string readablePrimary(string primary, string onPrimary)
+{
+	import std.format : format;
+	import std.math : pow;
+	double[3] rgb(string h)
+	{
+		if (h.length == 4)
+			h = "#" ~ h[1] ~ h[1] ~ h[2] ~ h[2] ~ h[3] ~ h[3];
+		if (h.length != 7)
+			return [0, 0, 0];
+		return [h[1 .. 3].to!int(16), h[3 .. 5].to!int(16), h[5 .. 7].to!int(16)];
+	}
+	double lum(double[3] c)
+	{
+		double f(double v) { v /= 255; return v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4); }
+		return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]);
+	}
+	double ratio(double[3] a, double[3] b)
+	{
+		auto x = lum(a), y = lum(b);
+		return (x > y ? x + 0.05 : y + 0.05) / (x > y ? y + 0.05 : x + 0.05);
+	}
+	try
+	{
+		auto c = rgb(primary), t = rgb(onPrimary);
+		immutable towards = lum(t) > 0.5 ? 0.0 : 255.0; // light text: darken; dark text: lighten
+		foreach (_; 0 .. 40)
+		{
+			if (ratio(c, t) >= 4.5)
+				break;
+			foreach (ref v; c)
+				v = v + (towards - v) * 0.06;
+		}
+		return format("#%02x%02x%02x", cast(int) c[0], cast(int) c[1], cast(int) c[2]);
+	}
+	catch (Exception)
+		return primary;
+}
+
+unittest
+{
+	assert(readablePrimary("#ff4b4b", "#ffffff") != "#ff4b4b"); // 3.6:1 → darker
+	assert(readablePrimary("#0055aa", "#ffffff") == "#0055aa");  // already fine
+}
+
 /// What `runMain` should do after parsing the command line.
-enum ArgsAction { serve, help, hashPassword }
+enum ArgsAction { serve, help, hashPassword, userCommand }
 
 /// Build the server options from config files, `STREAMLITD_*` environment variables and the
 /// command line (precedence: CLI > env > config file > defaults). Throws on invalid input.
@@ -805,7 +987,8 @@ ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction 
 	// schemes and designs from config files count too (they are registered when the server starts)
 	auto schemeNames = colorSchemeNames() ~ o.schemes.map!(c => c.name).array;
 	auto designNamesAll = designNames() ~ o.designs.map!(d => d.style.name).array;
-	bool noSwitch, hashPassword;
+	bool noSwitch, hashPassword, listUsers;
+	string addUser, setPassword, deleteUser, resetLink, setRoles, roles;
 	string unusedConfig;
 	auto help = getopt(args, config.passThrough,
 		"config", "Config file (default: .streamlitd/config.toml or .streamlit/config.toml)", &unusedConfig,
@@ -823,6 +1006,15 @@ ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction 
 		"theme-mode", "auto | light | dark", &o.theme.mode,
 		"no-theme-switch", "Hide the viewer's appearance menu", &noSwitch,
 		"hash-password", "Read a password from stdin and print its hash for secrets.toml", &hashPassword,
+		"add-user", "Create a user in the user store (asks for the password; see --roles, --email, --name)", &addUser,
+		"set-password", "Set a user's password (asks for it)", &setPassword,
+		"set-roles", "Set a user's roles (with --roles)", &setRoles,
+		"delete-user", "Delete a user from the user store", &deleteUser,
+		"list-users", "List the users in the user store", &listUsers,
+		"reset-link", "Print a one-time link that lets a user set a new password", &resetLink,
+		"roles", "Roles for --add-user / --set-roles, comma-separated (e.g. admin,editor)", &roles,
+		"email", "Email for --add-user", &o.userCommand.email,
+		"name", "Full name for --add-user", &o.userCommand.name,
 		"auth-required", "Require login for the whole app ([auth] must be configured)", &o.authRequired,
 		"favicon", "Favicon image file (svg, png, ico, ...) for every page", &o.favicon,
 		"api-docs", "Serve the OpenAPI document and Swagger UI for the app's API (--api-docs=false turns it off)", &o.api.docs,
@@ -837,6 +1029,28 @@ ServerOptions parseServerArgs(string[] args, string[string] env, out ArgsAction 
 		return o;
 	}
 	action = hashPassword ? ArgsAction.hashPassword : ArgsAction.serve;
+	{
+		import std.algorithm : splitter, filter;
+		import std.string : strip;
+		size_t n;
+		void cmd(string kind, string user) { if (user.length || (kind == "list" && listUsers)) { o.userCommand.kind = kind; o.userCommand.username = user; n++; } }
+		cmd("add", addUser);
+		cmd("set-password", setPassword);
+		cmd("set-roles", setRoles);
+		cmd("delete", deleteUser);
+		cmd("list", null);
+		cmd("reset-link", resetLink);
+		if (n > 1)
+			throw new Exception("give only one of --add-user, --set-password, --set-roles, --delete-user, --list-users, --reset-link");
+		o.userCommand.rolesGiven = roles !is null;
+		foreach (r; roles.splitter(","))
+			if (r.strip.length)
+				o.userCommand.roles ~= r.strip;
+		if (o.userCommand.kind == "set-roles" && !o.userCommand.rolesGiven)
+			throw new Exception("--set-roles needs --roles (e.g. --roles admin,editor; --roles= removes all)");
+		if (n)
+			action = ArgsAction.userCommand;
+	}
 	if (noSwitch)
 		o.allowThemeSwitch = false;
 	if (o.favicon.length && action == ArgsAction.serve)
@@ -925,6 +1139,8 @@ int runMain(AppFn app, string[] args, RoutesFn routes = null)
 				import streamlitd.auth : hashPasswordString;
 				writeln(hashPasswordString(readln().chomp));
 				return 0;
+			case ArgsAction.userCommand:
+				return runUserCommand(o);
 			case ArgsAction.serve:
 				break;
 		}
@@ -1024,4 +1240,20 @@ unittest
 	assertThrown(mountUserRoutes(new URLRouter, (URLRouter r) {
 		r.get("/oauth2callback", (HTTPServerRequest req, HTTPServerResponse res) {});
 	}));
+}
+
+unittest
+{
+	// the login pages use the app's scheme, also one registered by the app or config.toml
+	import streamlitd.theme : registerColorScheme, resetThemeExtensions, ThemeTokens, Theme;
+	scope (exit) resetThemeExtensions();
+	ThemeTokens t;
+	t.primaryColor = "#0055aa";
+	registerColorScheme("authpagetest", "Test", t);
+	Theme th;
+	th.scheme = "authpagetest";
+	auto c = authPageColors(th);
+	assert(c[0] == "#0055aa" && c[2] == "#0055aa", c[0]);
+	th.scheme = "nope";
+	assert(authPageColors(th)[0] == "#ff4b4b");
 }

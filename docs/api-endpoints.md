@@ -109,6 +109,9 @@ signed in to its API.
   login. There is nothing to add.
 - `requireUser(req, res)` returns the user, or answers 401. `apiUser(req, res)` returns the user,
   or a `UserInfo` whose `isLoggedIn` is `false`.
+- `requireRole(req, res, "admin")` also answers 403 unless the user has the role
+  ([roles](authentication.md#roles)); `user.roles`, `user.hasRole(...)` work as in the app.
+- `accounts()` is the account service (create users, roles, invites; [Authentication](authentication.md#accounts-from-code)).
 - Errors from your routes have one shape: an `HTTPStatusException` thrown in a plain handler
   (including the one from `requireUser`) is answered as `{"statusMessage": "..."}`, like REST errors.
 - Both work as vibe.d `@before` filters:

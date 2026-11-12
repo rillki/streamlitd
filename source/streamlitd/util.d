@@ -164,3 +164,18 @@ string htmlEscapeAttr(string s) @safe pure
 	import std.array : replace;
 	return s.replace("&", "&amp;").replace(`"`, "&quot;").replace("<", "&lt;").replace(">", "&gt;");
 }
+
+/// Same-origin check for WebSocket and upload requests (protects against cross-site
+/// WebSocket hijacking). Requests without an Origin header (non-browser clients) pass.
+bool originAllowed(string origin, string host, const string[] allowed)
+{
+	import std.algorithm : canFind, startsWith;
+	if (origin.length == 0)
+		return true;
+	if (allowed.canFind("*") || allowed.canFind(origin))
+		return true;
+	foreach (scheme; ["http://", "https://"])
+		if (origin.startsWith(scheme) && origin[scheme.length .. $] == host)
+			return true;
+	return false;
+}

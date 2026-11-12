@@ -258,7 +258,9 @@ if (picked == "Profile")
 ```
 
 `st.userMenu` shows the signed-in user in the header bar: their picture (OIDC `picture` claim) or
-initials, and their name. It opens a menu with your items (`"-"` is a separator) and **Log out**.
+initials, and their name. It opens a menu with your items (`"-"` is a separator), **Account
+settings** (for accounts in the user store: name, email and password on `/auth/account`; turn it
+off with `account: false`) and **Log out** (`logout: false` hides it).
 It returns the item picked in this run, otherwise null, like a button. Signed out, it shows a
 **Log in** button; without `[auth]` configured it shows nothing. See [Authentication](authentication.md).
 

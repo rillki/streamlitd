@@ -155,8 +155,9 @@ mixin template PageElements()
 	/// The user menu in the header bar: the logged-in user's picture (or initials) and name, opening
 	/// a menu with `items` and "Log out". Returns the item clicked in this run, otherwise null.
 	/// Signed out, it shows a "Log in" button; without `[auth]` configured it shows nothing.
-	/// It is always placed in `st.topbar`, wherever it is called.
-	string userMenu(string[] items = null, bool logout = true, string key = null)
+	/// It is always placed in `st.topbar`, wherever it is called. With `account`, users from the
+	/// user store also get "Account settings" (name, email, password: `/auth/account`).
+	string userMenu(string[] items = null, bool logout = true, string key = null, bool account = true)
 	{
 		import std.array : join;
 		auto u = user;
@@ -164,7 +165,8 @@ mixin template PageElements()
 		auto id = tb.widgetId("user_menu", key, items.join("\x01"));
 		auto shown = u.name.length ? u.name : u.email.length ? u.email : u.sub;
 		auto p = jo("items", items, "auth", sess.authEnabled, "logout", logout && sess.authEnabled,
-			"loggedIn", u.isLoggedIn, "name", shown, "email", u.email);
+			"loggedIn", u.isLoggedIn, "name", shown, "email", u.email,
+			"account", account && u.isLoggedIn && sess.user["store"].opt!bool(false));
 		if (u.isLoggedIn && sess.user["picture"].type == Json.Type.string)
 			p["picture"] = sess.user["picture"];
 		return tb.widget!string("user_menu", id, key, null, (string v) => Json(v), (Json j) {

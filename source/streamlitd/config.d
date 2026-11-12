@@ -53,6 +53,17 @@ struct ElementConfig
 }
 
 /// Server settings (see `serve`).
+/// A user-management command given on the command line.
+struct UserCommand
+{
+	string kind;      /// "add", "set-password", "delete", "list", "reset-link", "set-roles"
+	string username;
+	string[] roles;   /// --roles admin,editor
+	bool rolesGiven;
+	string email;
+	string name;
+}
+
 struct ServerOptions
 {
 	ushort port = 8501;
@@ -84,6 +95,15 @@ struct ServerOptions
 	bool authRequired;
 	/// Raw `[auth]` table from the config file (see `streamlitd.auth`).
 	Json auth;
+	/// `[auth]` keys from `STREAMLITD_AUTH_*` environment variables; they win over config.toml and
+	/// secrets.toml (e.g. `STREAMLITD_AUTH_USERS_FILE`, `STREAMLITD_AUTH_REGISTRATION`).
+	Json authEnv;
+	/// A user command from the command line (`--add-user`, `--list-users`, ...); empty `kind` = none.
+	UserCommand userCommand;
+	/// Behind a reverse proxy: take the client address from `X-Forwarded-For` (login throttling
+	/// and logs), using the last entry, which the proxy appends. Only enable it when a proxy is
+	/// always in front of the app (`[server] trustProxy`).
+	bool trustProxy;
 	/// OpenAPI / Swagger UI settings (`[api]`).
 	ApiDocsOptions api;
 	/// Color schemes, design styles and elements defined in config files; `serve` registers them.
@@ -137,6 +157,7 @@ string[] applyConfig(ref ServerOptions o, Json cfg)
 				case "idleTimeout": o.idleTimeoutSeconds = v.to!uint; break;
 				case "headless": o.quiet = v.get!bool; break;
 				case "favicon": o.favicon = v.get!string; break;
+				case "trustProxy": o.trustProxy = v.get!bool; break;
 				case "allowedOrigins":
 					o.allowedOrigins = null;
 					foreach (e; v)
@@ -382,7 +403,7 @@ void applyEnv(ref ServerOptions o, string[string] env)
 	cfg["server"] = Json.emptyObject;
 	cfg["theme"] = Json.emptyObject;
 	static immutable serverKeys = ["port", "address", "maxUploadSize", "scriptThreads", "baseUrlPath",
-		"maxSessions", "idleTimeout", "headless", "favicon"];
+		"maxSessions", "idleTimeout", "headless", "favicon", "trustProxy"];
 	static immutable themeKeys = ["scheme", "preset", "design", "mode", "base", "primaryColor", "backgroundColor",
 		"secondaryBackgroundColor", "textColor", "font", "headingFont", "codeFont", "baseRadius"];
 	foreach (k; serverKeys)
@@ -402,6 +423,14 @@ void applyEnv(ref ServerOptions o, string[string] env)
 			cfg["api"][k] = *v;
 		}
 	applyConfig(o, cfg);
+	static immutable authKeys = ["required", "registration", "users_file", "cookie_secret", "password_min_length", "require_email"];
+	foreach (k; authKeys)
+		if (auto v = ("STREAMLITD_AUTH_" ~ k.toUpper) in env)
+		{
+			if (o.authEnv.type != Json.Type.object)
+				o.authEnv = Json.emptyObject;
+			o.authEnv[k] = envValue(*v);
+		}
 }
 
 private Json envValue(string v)

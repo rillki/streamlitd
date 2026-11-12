@@ -19,6 +19,8 @@ SECTIONS = [
     ("Custom components", "components.d", "", None),
     ("Custom elements & widgets", "extensions.d", "See [Extending streamlitd](extending.md).", None),
     ("App control, page config, themes, auth (`St` core)", "delta.d", "", None),
+    ("Accounts on `St`: roles, admin panel", "useradmin.d", "See [Authentication](authentication.md).", None),
+    ("Accounts: sign-up, user store, roles, invites", "accounts.d", "See [Authentication](authentication.md#accounts-sign-up-and-roles).", None),
     ("Session state (`st.session`)", "state.d", "", None),
     ("DataFrame", "dataframe.d", "", None),
     ("Caching", "cache.d", "", None),

@@ -68,7 +68,10 @@ win95, XP, brutalist, material and glass, each usable with any color scheme:
   - `config.toml` and `secrets.toml` (existing `.streamlit/` files work)
   - base URL path for reverse proxies, origin checks, session limits
   - Docker image, health endpoint
-- **Auth:** password users (PBKDF2) and OIDC (Google, Entra ID, Keycloak, …), `st.user`.
+- **Auth:** sign-up with automatic password hashing (the first account is admin), invites or
+  approval, roles (`st.user.hasRole`, `st.requireRole`), a ready-made admin panel (`st.userAdmin()`),
+  account page, login throttling, CLI user commands; plus users in `secrets.toml` and OIDC (Google,
+  Entra ID, Keycloak, …): [Authentication](docs/authentication.md).
 - **App shell and business UI** beyond Streamlit: top navigation with sections, breadcrumbs, a header
   bar, user menu, footer and banners; menu buttons, pagination, cards, stepper, timeline, tags, tree
   select, date ranges and more: [Layout](docs/layout-and-navigation.md), [More elements](docs/more-elements.md).

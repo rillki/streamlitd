@@ -20,7 +20,7 @@ breadcrumbs) are in [Layout & navigation](layout-and-navigation.md#app-shell-hea
 | [Tags input](#tags-input) | `string[] tagsInput(label, value, suggestions, maxTags, ...)` |
 | [Tree select](#tree-select) | `string[] treeSelect(label, TreeNode[], value, multi, ...)` |
 | [Date range](#date-range) | `DateRange dateRangeInput(label, value, minValue, maxValue, ...)` |
-| [Copy button](#copy-button) | `copyButton(text, label, icon)` |
+| [Copy button](#copy-button) | `copyButton(text, label, icon, help, url)` |
 
 ## Menu button
 
@@ -185,6 +185,8 @@ also type `2026-01-01 – 2026-01-31`. The result always has `start <= end` and 
 st.copyButton("https://reports.example.com/q3?region=eu", "Copy link");
 ```
 
-Copies the text to the clipboard and shows "Copied ✓"; the app does not rerun. Browsers only
+Copies the text to the clipboard and shows "Copied ✓"; the app does not rerun. With `url: true`,
+a path such as `/auth/reset?token=…` is copied as a full URL on the server the browser is on
+(the admin panel uses this for invite and reset links). Browsers only
 offer the clipboard API on HTTPS and localhost; on plain HTTP a fallback is used, which most
 browsers still allow after a click.

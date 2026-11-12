@@ -217,9 +217,13 @@
       case "logo":
         renderLogo(msg);
         break;
-      case "navigate":
-        location.href = new URL(msg.url, document.baseURI).toString();
+      case "navigate": {
+        const u = new URL(msg.url, document.baseURI);
+        // st.login(): come back to this page afterwards
+        if (/\/auth\/login$/.test(u.pathname) && !u.searchParams.has("next")) u.searchParams.set("next", location.pathname + location.search);
+        location.href = u.toString();
         break;
+      }
       case "page_config":
         applyPageConfig(msg);
         break;
@@ -733,16 +737,19 @@
         "aria-label": "User menu: " + (el.name || "") },
         avatarEl(el.name || el.email, el.picture, "small"), h("span", { class: "user-menu-name", text: el.name || "" }),
         h("span", { class: "caret", "aria-hidden": "true", text: "▾" }));
-      const LOGOUT = "\u0000logout";
+      const LOGOUT = "\u0000logout", ACCOUNT = "\u0000account";
       StUI.attachMenu(btn, () => {
         const items = (el.items || []).map((label) => label === "-" ? { separator: true } : { label, value: label });
-        if (el.logout) {
-          if (items.length) items.push({ separator: true });
-          items.push({ label: "Log out", value: LOGOUT, icon: "⎋" });
-        }
+        if (el.account || el.logout) { if (items.length) items.push({ separator: true }); }
+        if (el.account) items.push({ label: "Account settings", value: ACCOUNT, href: "auth/account", icon: "⚙" });
+        if (el.logout) items.push({ label: "Log out", value: LOGOUT, icon: "⎋" });
         if (el.email && el.email !== el.name) items.unshift({ heading: el.email });
         return items;
-      }, (it) => { if (it.value === LOGOUT) location.href = "auth/logout"; else triggerWidget(el, it.value); },
+      }, (it) => {
+        if (it.value === LOGOUT) location.href = "auth/logout";
+        else if (it.value === ACCOUNT) location.href = "auth/account";
+        else triggerWidget(el, it.value);
+      },
       { label: "User menu", alignRight: true });
       node.wrap.appendChild(btn);
     },
@@ -1347,10 +1354,12 @@
       let timer = null;
       b.addEventListener("click", async () => {
         let ok = false;
-        try { await navigator.clipboard.writeText(el.text); ok = true; } catch (e) {
+        // url: an absolute path ("/base/auth/reset?...") becomes a full URL on this server
+        const text = el.url ? new URL(String(el.text), location.href).href : el.text;
+        try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {
           // plain http outside localhost has no clipboard API: fall back to a selected textarea
           const ta = h("textarea", { style: { position: "fixed", opacity: "0", top: "0", left: "0" } });
-          ta.value = el.text;
+          ta.value = text;
           document.body.appendChild(ta);
           ta.select();
           try { ok = document.execCommand("copy"); } catch (e2) {}

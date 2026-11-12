@@ -24,7 +24,9 @@
 | `cache.d` | `cacheData` / `cacheResource` |
 | `media.d` | in-memory media (images, downloads) and uploads |
 | `theme.d` | design styles (`DesignStyle`), color schemes, `Theme`, `ThemeTokens` |
-| `auth.d`, `authserver.d` | PBKDF2, signed cookies; login routes and OIDC |
+| `auth.d`, `authserver.d` | PBKDF2, signed cookies; the login, sign-up, account and reset pages, OIDC, CSRF tokens |
+| `accounts.d` | accounts: `UserStore` (default `JsonFileUserStore`), registration modes, roles, invites, reset links, `LoginThrottle`; the `Accounts` service (`accounts()`) |
+| `useradmin.d` | `St` methods for accounts: `st.accounts`, `requireLogin`, `requireRole`, `userAdmin()` |
 | `testing.d` | `AppTest` |
 | `assetlist.d` | generated list of embedded assets (`tools/gen_assets.py`); Swagger UI has its own list, `swaggerAssetNames` |
 | `extensions.d` | app-defined native elements and widgets (`registerElement`, `st.customElement`, `st.customWidget!T`) and the combined extension stylesheet/script; the scheme and design registries live in `theme.d` |
@@ -47,7 +49,7 @@ All messages are JSON over one WebSocket per tab (`<base>/_stcore/ws`).
 | `new_session` | `sessionId`, color schemes (`themes`), design styles (`designs`), default theme |
 | `script_started` / `script_finished` | run boundaries: `run` id, `status` (`ok`, `error`, `stopped`, `rerun`), `fragment` + `path` for fragment runs |
 | `delta` | `path` (e.g. `[0, 3, 1]`) + `el` (element JSON with `kind`, and `block` for containers) |
-| `page_config`, `set_theme`, `navigation`, `set_page`, `query_params`, `toast`, `effect`, `logo`, `navigate` | page-level effects |
+| `page_config`, `set_theme`, `navigation`, `set_page`, `query_params`, `toast`, `effect`, `logo`, `navigate` | page-level effects (`navigate` to `auth/login` gets `?next=<current page>` in the browser, so the login returns there) |
 
 Paths start with a root: `0` main area, `1` sidebar, `2` bottom (chat input), `3` dialogs, `4` header bar
 (`st.topbar`, `userMenu`), `5` footer (`st.footer`), `6` banners (`st.banner`). Roots 1, 2, 4, 5 and 6 are

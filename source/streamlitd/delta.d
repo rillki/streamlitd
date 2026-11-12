@@ -40,6 +40,9 @@ import streamlitd.pages : PageElements;
 import streamlitd.fragments : FragmentElements, StatusContainer;
 import streamlitd.components : ComponentElements, ComponentsApi, findComponent;
 import streamlitd.extensions : CustomElements, isElementRegistered;
+import streamlitd.useradmin : AccountElements;
+import streamlitd.accounts : Accounts;
+static import streamlitd.accounts;
 
 /// Root containers.
 enum RootContainer : int
@@ -373,6 +376,7 @@ final class St
 	mixin FragmentElements;
 	mixin ComponentElements;
 	mixin CustomElements;
+	mixin AccountElements;
 }
 
 package UserInfo makeUserInfo(Json data) { return UserInfo(data); }
@@ -392,6 +396,32 @@ struct UserInfo
 	@property string sub() const @trusted { return isLoggedIn ? data["sub"].opt!string(null) : null; }
 	/// "password" or the OIDC provider name.
 	@property string provider() const @trusted { return isLoggedIn ? data["provider"].opt!string(null) : null; }
+	/// The account name in the user store: the username for password users, `"<provider>:<sub>"`
+	/// for OIDC users (what `st.accounts` methods take).
+	@property string username() const @trusted
+	{
+		if (!isLoggedIn)
+			return null;
+		auto u = data["username"].opt!string(null);
+		return u !is null ? u : provider == "password" ? sub : provider ~ ":" ~ sub;
+	}
+	/// Roles: from the user store, `roles` in `[auth.users.x]`, and "admin" for `[auth] admins`.
+	@property string[] roles() const @trusted
+	{
+		string[] r;
+		if (isLoggedIn && data["roles"].type == Json.Type.array)
+			foreach (x; data["roles"])
+				r ~= x.get!string;
+		return r;
+	}
+	/// Has the user this role?
+	bool hasRole(string role) const @trusted
+	{
+		import std.algorithm : canFind;
+		return roles.canFind(role);
+	}
+	/// Has the user the "admin" role?
+	@property bool isAdmin() const { return hasRole("admin"); }
 	/// All stored claims.
 	@property Json claims() const @trusted { return isLoggedIn ? data.clone : Json(null); }
 }

@@ -17,6 +17,7 @@ import streamlitd.delta : St;
 import streamlitd.session;
 import streamlitd.errors;
 import streamlitd.util;
+import streamlitd.accounts : Accounts;
 
 /// Runs an app without a browser and inspects its output.
 final class AppTest
@@ -147,6 +148,43 @@ final class AppTest
 
 	/// Number of script runs (full and fragment) started so far.
 	int runCount() { return sess.runId; }
+
+	/// Act as a logged-in user (`st.user`), e.g. `at.loginAs("ann", ["admin"])`. A user of the
+	/// account service set with `useAccounts` is taken from its store (its roles count then).
+	AppTest loginAs(string username, string[] roles = null, string name = null, string email = null)
+	{
+		import streamlitd.accounts : accounts;
+		sess.authEnabled = true;
+		auto acc = accounts();
+		if (acc !is null)
+			if (auto u = acc.user(username))
+			{
+				sess.user = acc.resolve(acc.claimsOf(*u));
+				return this;
+			}
+		auto r = Json.emptyArray;
+		foreach (x; roles)
+			r.appendArrayElement(Json(x));
+		sess.user = Json(["sub": Json(username), "username": Json(username), "name": Json(name.length ? name : username),
+			"email": email.length ? Json(email) : Json(null), "provider": Json("password"), "roles": r]);
+		return this;
+	}
+
+	/// Log out (`st.user.isLoggedIn` becomes false).
+	AppTest logout()
+	{
+		sess.user = Json(null);
+		return this;
+	}
+
+	/// Use this account service for `st.accounts` and `st.userAdmin` (it is process-wide, like on
+	/// the server; pass `null` to remove it). Example:
+	/// `at.useAccounts(new Accounts(AccountSettings.init, new MemoryUserStore, Json.emptyObject, secret))`.
+	static void useAccounts(Accounts a)
+	{
+		import streamlitd.accounts : setAccounts;
+		setAccounts(a);
+	}
 
 	/// Submit a chat message (call `run()` afterwards).
 	AppTest chat(string message)

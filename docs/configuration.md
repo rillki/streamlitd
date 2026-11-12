@@ -27,6 +27,7 @@ idleTimeout = 0              # --idle-timeout (seconds without client activity; 
 headless = false             # true = no startup banner (--quiet)
 favicon = ""                 # --favicon: app-wide favicon image (svg, png, ico, jpg, gif, webp); default: the streamlitd icon
 allowedOrigins = []          # --allowed-origin: extra Origins allowed to open the WebSocket / upload ("*" = any)
+trustProxy = false           # behind a reverse proxy: client address = the last X-Forwarded-For entry (login limits, logs)
 
 [theme]
 design = "streamlit"         # --design: streamlit, terminal, retro, win95, xp, brutalist, material, glass
@@ -54,8 +55,10 @@ css = "ui/rating.css"
 tileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 attribution = "&copy; OpenStreetMap contributors"
 
-[auth]                       # usually kept in secrets.toml, see authentication.md
+[auth]                       # see authentication.md (secrets such as cookie_secret go in secrets.toml)
 required = false             # --auth-required
+registration = "first_admin" # sign-up: off | first_admin | open | approval | invite (default: see authentication.md)
+users_file = ".streamlitd/users.json"   # the user store
 
 [api]                        # OpenAPI + Swagger UI for the app's API, see api-endpoints.md
 docs = false                 # --api-docs: serve them (off by default)
@@ -89,6 +92,8 @@ warning at startup. An existing `.streamlit/config.toml` can stay as it is.
 | `STREAMLITD_SERVER_IDLETIMEOUT` | `[server] idleTimeout` |
 | `STREAMLITD_SERVER_HEADLESS` | `[server] headless` |
 | `STREAMLITD_SERVER_FAVICON` | `[server] favicon` |
+| `STREAMLITD_SERVER_TRUSTPROXY` | `[server] trustProxy` |
+| `STREAMLITD_AUTH_REQUIRED`, `_REGISTRATION`, `_USERS_FILE`, `_COOKIE_SECRET`, `_PASSWORD_MIN_LENGTH`, `_REQUIRE_EMAIL` | the `[auth]` keys; they win over `config.toml` and `secrets.toml` |
 | `STREAMLITD_API_DOCS` (`true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`) | `[api] docs` |
 | `STREAMLITD_API_DOCSPATH`, `_SPECPATH`, `_TITLE`, `_VERSION` | `[api] docsPath`, `specPath`, `title`, `version` |
 | `STREAMLITD_THEME_DESIGN`, `_SCHEME` (or `_PRESET`), `_MODE`, `_BASE` | `[theme] design`, `scheme`, `mode`, `base` |
@@ -119,6 +124,8 @@ warning at startup. An existing `.streamlit/config.toml` can stay as it is.
 | `--favicon <file>` | streamlitd icon | favicon image for every page (svg, png, ico, …) |
 | `--api-docs`, `--api-docs=false` | off | serve the OpenAPI document and Swagger UI ([API endpoints](api-endpoints.md#openapi-and-swagger-ui)) |
 | `--hash-password` | | read a password from stdin, print its hash for `secrets.toml`, exit |
+| `--add-user <name>` (`--roles a,b`, `--email`, `--name`) | | create an account in the user store (asks for the password), exit ([Authentication](authentication.md#command-line)) |
+| `--set-password <name>`, `--set-roles <name> --roles a,b`, `--delete-user <name>`, `--list-users`, `--reset-link <name>` | | manage accounts, exit |
 | `--quiet`, `-q` | | no startup banner |
 
 ## Build-time switches (dub versions)

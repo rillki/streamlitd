@@ -1,4 +1,5 @@
-/// Login: password users and an OIDC provider; the whole app requires a login.
+/// Login: password users from secrets.toml and an OIDC provider; the whole app requires a login.
+/// Alice is an admin (`roles` in secrets.toml) and sees the user administration panel.
 import streamlitd;
 
 void app(St st)
@@ -12,6 +13,12 @@ void app(St st)
 	auto picked = st.userMenu(["Profile", "-", "Help"]);
 	if (picked.length)
 		st.info("You picked **" ~ picked ~ "** in the user menu.");
+	// alice has roles = ["admin"] in secrets.toml: she manages the users who signed in with SSO
+	if (u.isAdmin)
+	{
+		st.subheader("Users");
+		st.userAdmin();
+	}
 }
 
 /// A JSON endpoint behind the same login ([auth] required = true answers 401 to anonymous calls).

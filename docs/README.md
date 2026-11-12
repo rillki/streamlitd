@@ -20,7 +20,7 @@ every interaction. You get a single self-contained binary that serves the web UI
 | [Theming](theming.md) | 8 design styles (terminal, retro, win95, XP, …) × 8 color schemes × light/dark, custom colors and fonts |
 | [Configuration](configuration.md) | `config.toml`, environment variables, command-line flags, `secrets.toml` |
 | [Deployment](deployment.md) | release builds, systemd, Docker and docker-compose, reverse proxies, scaling |
-| [Authentication](authentication.md) | password users, OIDC single sign-on (Google, Entra ID, Keycloak…), `st.user` |
+| [Authentication](authentication.md) | sign-up with automatic password hashing, roles, admin panel, account page, invites, login limits, CLI user commands, users in secrets.toml, OIDC single sign-on (Google, Entra ID, Keycloak…), `st.user` |
 | [Custom components](custom-components.md) | static HTML/iframes and bidirectional JS components |
 | [Extending streamlitd](extending.md) | your own color schemes, design styles and native widgets/elements, in D or `config.toml` |
 | [JSON API endpoints](api-endpoints.md) | FastAPI-style REST endpoints served next to the app, sharing its login and data |
@@ -50,7 +50,8 @@ The [`examples/`](../examples) folder contains runnable apps. Each one is used b
 | `fragments` | `st.fragment`, auto-refresh, `st.dialog`, `st.status`, pills/segmented/feedback |
 | `extras` | LaTeX, code highlighting, Plotly, maps, custom components |
 | `prod` | `config.toml`, secrets, base URL path, worker threads |
-| `auth` | password and OIDC login, user menu in the header bar |
+| `auth` | users in secrets.toml and OIDC login, user menu, admin panel for SSO users |
+| `accounts` | sign-up without manual hashes (the first account is admin), invites, roles, account page |
 | `tutorial` | the app built in the [tutorial](tutorial.md) |
 | `api` | a dashboard plus a JSON REST API on the same port ([API endpoints](api-endpoints.md)) |
 | `custom` | the app's own color schemes, design style and native widgets ([Extending](extending.md)) |

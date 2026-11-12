@@ -91,6 +91,22 @@ struct PageConfig
 /// A browser session.
 final class AppSession
 {
+	/// Re-check a user-store account at the start of each full run: roles changes apply at once,
+	/// and a deleted, disabled or logged-out-everywhere account ends (with `required`, the browser
+	/// goes to the login page).
+	private void refreshUser()
+	{
+		import streamlitd.accounts : accounts;
+		if (user.type != Json.Type.object || !user["store"].opt!bool(false))
+			return;
+		auto a = accounts();
+		if (a is null)
+			return;
+		user = a.resolve(user);
+		if (user.type != Json.Type.object && authRequired)
+			send(jo("type", "navigate", "url", "auth/login"));
+	}
+
 	string id;
 	AppFn appFn;
 	Transport transport;
@@ -155,6 +171,8 @@ final class AppSession
 	Json user;
 	/// True when `[auth]` is configured (login routes exist).
 	bool authEnabled;
+	/// `[auth] required`: a user whose account ends mid-session is sent to the login page.
+	bool authRequired;
 
 	/// Map tiles for `st.map` (from `[map]` config).
 	string mapTileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -441,6 +459,7 @@ final class AppSession
 			mediaRefs = null;
 			newFragments = null;
 			navCrumbs = Json.undefined;
+			refreshUser();
 			appAllowSwitch = true;
 			pageConfigSent = false;
 			chatInputUsed = false;

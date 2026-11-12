@@ -672,9 +672,11 @@ mixin template Widgets()
 	}
 
 	/// A button that copies `text` to the clipboard (streamlitd only); it does not rerun the app.
-	void copyButton(string text, string label = "Copy", string icon = "📋", string help = null)
+	/// With `url`, a path such as "/auth/reset?token=..." is copied as a full URL of this app
+	/// (the browser adds the address it is on).
+	void copyButton(string text, string label = "Copy", string icon = "📋", string help = null, bool url = false)
 	{
-		emit(jo("kind", "copy_button", "text", text, "label", label, "icon", icon, "help", help));
+		emit(jo("kind", "copy_button", "text", text, "label", label, "icon", icon, "help", help, "url", url));
 	}
 
 	/// `st.time_input`

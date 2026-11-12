@@ -199,7 +199,10 @@ For more than one replica, enable session affinity, e.g. with the ingress annota
 - [ ] Put the app behind a TLS-terminating proxy; keep it on `127.0.0.1` or a private network.
 - [ ] Keep `secrets.toml` out of git and out of images; mount it read-only.
 - [ ] Use `[auth]` (see [Authentication](authentication.md)) for anything non-public; set a
-      long random `cookie_secret`.
+      long random `cookie_secret` (or keep the generated `.streamlitd/auth_secret`).
+- [ ] With accounts: keep the user store (`.streamlitd/users.json`, or `users_file`) on a persistent,
+      backed-up volume that only the app's user can read; one server process per file. Behind a
+      proxy, set `[server] trustProxy = true` so login limits see the real client address.
 - [ ] Set `allowedOrigins` only if you really embed the app on another site.
 - [ ] Set `--max-upload-mb`, `--max-sessions` and `--idle-timeout` to fit your environment.
 - [ ] Keep the API docs (`[api] docs`, off by default) off on public deployments unless you want the

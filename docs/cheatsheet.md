@@ -156,6 +156,7 @@ and `labelVisibility: "visible" | "hidden" | "collapsed"`.
 | `st.user.is_logged_in`, `st.user.name`, `st.user.email` | `st.user.isLoggedIn`, `st.user.name`, `st.user.email` (`sub`, `provider`, `claims`) |
 | `st.login("google")`, `st.logout()` | `st.login("google")`, `st.logout()` |
 | `[auth]` in `secrets.toml` | same format; see [Authentication](authentication.md) |
+| (no equivalent) | sign-up with automatic hashing (`[auth] registration`), `st.user.roles` / `hasRole` / `isAdmin`, `st.requireRole("x")`, `st.userAdmin()`, `st.accounts`, `/auth/account`, `--add-user` ([Accounts](authentication.md#accounts-sign-up-and-roles)) |
 
 ## Components
 

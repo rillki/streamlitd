@@ -176,6 +176,45 @@ test("other example apps", async ({ browser }) => {
   expect(findings, summary(findings)).toEqual([]);
 });
 
+test("login, sign-up and account pages, and the admin panel", async ({ browser }) => {
+  test.setTimeout(180000);
+  const findings = [];
+  for (const mode of ["light", "dark"]) {
+    // the server-rendered pages follow the OS color mode
+    for (const [app, p, vp] of [["accounts", "/auth/login"], ["accounts", "/auth/register"], ["accounts", "/auth/register", { width: 390, height: 800 }],
+      ["auth", "/auth/login"]]) {
+      const ctx = await browser.newContext({ colorScheme: mode, viewport: vp || { width: 1280, height: 800 } });
+      const page = await ctx.newPage();
+      await page.goto(url(app, p));
+      findings.push(...(await audit(page, `${app}${p}${vp ? " (phone)" : ""} / ${mode}`)));
+      await ctx.close();
+    }
+    // alice (a config user and admin): the read-only account page, then the admin panel in some designs
+    const ctx = await browser.newContext({ colorScheme: mode });
+    const page = await ctx.newPage();
+    await page.goto(url("auth", "/auth/login"));
+    await page.getByLabel("Username").fill("alice");
+    await page.getByLabel("Password").fill("secret123");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await waitIdle(page, 1);
+    await page.goto(url("auth", "/auth/account"));
+    findings.push(...(await audit(page, `auth/account / ${mode}`)));
+    for (const design of ["streamlit", "terminal", "win95", "glass"]) {
+      await page.evaluate((a) => localStorage.setItem("streamlitd-appearance", JSON.stringify(a)),
+        { basis: "streamlit/streamlit/auto", scheme: "streamlit", design, mode });
+      await page.goto(url("auth", "/"));
+      await waitIdle(page, 1);
+      for (const tab of ["Users", "Add user", "Invites"]) {
+        await page.getByRole("tab", { name: tab }).click();
+        findings.push(...(await audit(page, `auth admin panel:${design}/${mode} / ${tab}`)));
+      }
+    }
+    await ctx.close();
+  }
+  report("auth-pages", findings);
+  expect(findings, summary(findings)).toEqual([]);
+});
+
 test("no native browser pop-up controls anywhere", async ({ browser }) => {
   for (const app of ["hello", "widgets", "data", "themes", "fragments", "multipage", "extras", "tutorial", "custom"]) {
     const page = await openWith(browser, app, { scheme: "streamlit", design: "streamlit", mode: "light" });

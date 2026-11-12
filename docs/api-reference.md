@@ -19,6 +19,8 @@ Optional parameters are usually passed by name: `st.slider("x", 0, 10, 5, step: 
 - [Custom components](#custom-components)
 - [Custom elements & widgets](#custom-elements--widgets)
 - [App control, page config, themes, auth (`St` core)](#app-control-page-config-themes-auth-st-core)
+- [Accounts on `St`: roles, admin panel](#accounts-on-st-roles-admin-panel)
+- [Accounts: sign-up, user store, roles, invites](#accounts-sign-up-user-store-roles-invites)
 - [Session state (`st.session`)](#session-state-stsession)
 - [DataFrame](#dataframe)
 - [Caching](#caching)
@@ -382,9 +384,9 @@ string[] treeSelect(string label, TreeNode[] nodes, string[] value = null, bool 
 Pick nodes of a tree in a searchable pop-up (streamlitd only). Returns the ids of the picked nodes in tree order. With `multi`, checking a node checks its whole subtree (also a parent id in `value`), and a node is included when all of its children are; without it, one node. Ids that are not in the tree are dropped.
 
 ```d
-void copyButton(string text, string label = "Copy", string icon = "📋", string help = null)
+void copyButton(string text, string label = "Copy", string icon = "📋", string help = null, bool url = false)
 ```
-A button that copies `text` to the clipboard (streamlitd only); it does not rerun the app.
+A button that copies `text` to the clipboard (streamlitd only); it does not rerun the app. With `url`, a path such as "/auth/reset?token=..." is copied as a full URL of this app (the browser adds the address it is on).
 
 ```d
 TimeOfDay timeInput(string label, TimeOfDay value = TimeOfDay.init, string key = null, string help = null, void delegate() onChange = null, bool disabled = false, int stepSeconds = 900, string labelVisibility = "visible")
@@ -757,9 +759,9 @@ void breadcrumbs(string[] labels, string[] urlPaths = null)
 Breadcrumbs with an explicit trail (streamlitd only). `urlPaths[i]` makes item i a link to that app page (null or missing: plain text); the last item is the current position.
 
 ```d
-string userMenu(string[] items = null, bool logout = true, string key = null)
+string userMenu(string[] items = null, bool logout = true, string key = null, bool account = true)
 ```
-The user menu in the header bar: the logged-in user's picture (or initials) and name, opening a menu with `items` and "Log out". Returns the item clicked in this run, otherwise null. Signed out, it shows a "Log in" button; without `[auth]` configured it shows nothing. It is always placed in `st.topbar`, wherever it is called.
+The user menu in the header bar: the logged-in user's picture (or initials) and name, opening a menu with `items` and "Log out". Returns the item clicked in this run, otherwise null. Signed out, it shows a "Log in" button; without `[auth]` configured it shows nothing. It is always placed in `st.topbar`, wherever it is called. With `account`, users from the user store also get "Account settings" (name, email, password: `/auth/account`).
 
 ## Custom components
 
@@ -983,6 +985,26 @@ Stable subject id from the provider (username for password logins).
 "password" or the OIDC provider name.
 
 ```d
+@property string username() const @trusted
+```
+The account name in the user store: the username for password users, `"<provider>:<sub>"` for OIDC users (what `st.accounts` methods take).
+
+```d
+@property string[] roles() const @trusted
+```
+Roles: from the user store, `roles` in `[auth.users.x]`, and "admin" for `[auth] admins`.
+
+```d
+bool hasRole(string role) const @trusted
+```
+Has the user this role?
+
+```d
+@property bool isAdmin() const
+```
+Has the user the "admin" role?
+
+```d
 @property Json claims() const @trusted
 ```
 All stored claims.
@@ -1019,6 +1041,361 @@ Remove all parameters.
 string[string] toAA()
 ```
 All parameters.
+
+## Accounts on `St`: roles, admin panel
+
+Source: [`source/streamlitd/useradmin.d`](../source/streamlitd/useradmin.d)
+
+See [Authentication](authentication.md).
+
+```d
+@property Accounts accounts()
+```
+The account service (sign-up, users, roles, invites, reset links); see `streamlitd.accounts`. Passwords given to it are hashed automatically. Throws when `[auth]` is not configured.
+
+```d
+void requireLogin()
+```
+Stop the run and send the browser to the login page when nobody is logged in.
+
+```d
+void requireRole(string role)
+```
+Show an error and stop the run unless the logged-in user has `role` (e.g. "admin"); sends anonymous visitors to the login page.
+
+```d
+void userAdmin(string key = "user-admin")
+```
+A ready-made user administration panel (streamlitd only), for admins: the users with their roles and status; approve, disable, reset links, log out everywhere, delete; adding users (passwords are hashed automatically) and one-time invites. Other users see an error. `key` keeps its widgets apart when there are several panels.
+
+## Accounts: sign-up, user store, roles, invites
+
+Source: [`source/streamlitd/accounts.d`](../source/streamlitd/accounts.d)
+
+See [Authentication](authentication.md#accounts-sign-up-and-roles).
+
+#### `struct StoredUser`
+A user in the store. Password users have a `passwordHash`; users from an OIDC provider have `provider` set (and `username` = `"<provider>:<sub>"`).
+
+```d
+string status() const
+```
+"active", "pending" or "disabled".
+
+#### `struct Invite`
+A one-time invite (only a hash of its code is stored).
+
+```d
+string id() const
+```
+Short id for lists and revoking (the start of the hash; not usable to sign up).
+
+#### `class AccountError : Exception`
+Raised for problems a user should see ("username taken", "password too short", ...).
+
+```d
+StoredUser* find(string username)
+```
+The user, or `null`.
+
+```d
+StoredUser* findByEmail(string email)
+```
+The user with this email (case-insensitive), or `null`.
+
+```d
+StoredUser[] list()
+```
+All users, ordered by `created`.
+
+```d
+void insert(StoredUser u)
+```
+Add a user; throws `AccountError` when the username exists.
+
+```d
+void update(StoredUser u)
+```
+Replace the user with the same username.
+
+```d
+Invite* takeInvite(string codeHash)
+```
+Remove and return the invite with this code hash, or `null` (single use).
+
+#### `class MemoryUserStore : UserStore`
+A store in memory (tests, or apps that only need users until a restart).
+
+```d
+protected void changed()
+```
+Called after each change (the file store saves here).
+
+#### `class JsonFileUserStore : MemoryUserStore`
+The default store: a JSON file, written atomically (temporary file + rename) with mode 0600. It is read once at startup; a file that cannot be parsed is an error (never silently reset).
+
+```d
+void restrictPermissions(string path)
+```
+chmod 600 (owner only) where supported.
+
+#### `enum Registration`
+Who may create an account (`[auth] registration`).
+
+```d
+Registration parseRegistration(string s)
+```
+Parse a `registration` value ("off", "first_admin", "open", "approval", "invite").
+
+```d
+string registrationName(Registration r)
+```
+The config name of a registration mode.
+
+```d
+string normalizeUsername(string name)
+```
+Lowercase and check a username: 3–64 characters `a-z 0-9 . _ -`, starting with a letter or digit.
+
+```d
+string normalizeEmail(string email)
+```
+A loose email check (one "@", a dot in the domain, no spaces); returns the trimmed address.
+
+#### `enum maxPasswordLength`
+Maximum accepted password length (PBKDF2 cost grows with it).
+
+```d
+string passwordProblem(string password, size_t minLength, string username = null, string email = null)
+```
+Why `password` is not acceptable, or null.
+
+```d
+string sha256Hex(string s)
+```
+Hex SHA-256 (invite codes are stored only as this hash).
+
+```d
+string randomCode(size_t bytes = 18)
+```
+A random URL-safe code.
+
+```d
+string hashPasswordSlow(string password)
+```
+Hash a new password (PBKDF2; deliberately slow).
+
+```d
+bool verifyPasswordSlow(string password, string hash)
+```
+ditto, for verifying (unknown users, i.e. an empty hash, cost the same and fail).
+
+#### `struct AccountSettings`
+Account settings from `[auth]`.
+
+#### `enum LoginResult`
+Outcome of a password check.
+
+#### `final class Accounts`
+The account service: one per server (`accounts()`), shared by the login pages, the CLI and the app (`st.accounts`). Thread-safe through the store.
+
+```d
+immutable(ubyte)[] secret
+```
+Signs reset links (the cookie secret).
+
+```d
+string configUserKey(string username) const
+```
+The key of `[auth.users.<name>]` matching `username` without regard to case (usernames are not case sensitive), or null.
+
+```d
+Json configUser(string username) const
+```
+The `[auth.users.<name>]` table, or `Json.undefined`.
+
+```d
+bool isConfigUser(string username) const
+```
+A user from `[auth.users.*]` (read-only)?
+
+```d
+string[] configRoles(string username, string email = null) const
+```
+Roles of a config user: its `roles`, plus "admin" when listed in `admins`.
+
+```d
+bool isListedAdmin(string username, string email) const
+```
+Listed in `[auth] admins` (by username or email)?
+
+```d
+bool isEffectiveAdmin(const ref StoredUser u) const
+```
+Has this store user admin rights (the `admin` role, or listed in `admins`)?
+
+```d
+bool hasAdmin()
+```
+Is there an active admin (store, config users or the `admins` list)?
+
+```d
+bool signupOpen()
+```
+Can somebody create a password account right now (from the sign-up page)?
+
+```d
+bool inviteRequired()
+```
+Does the sign-up page need an invite code?
+
+```d
+StoredUser register(string username, string password, string name = null, string email = null, string inviteCode = null)
+```
+Self sign-up (the registration page). Applies the registration mode: the first account becomes admin (unless `admins` names the admins; then those users need no invite or approval), `approval` accounts start pending, `invite` needs a valid `inviteCode`. Throws `AccountError` with a message for the user.
+
+```d
+StoredUser createUser(string username, string password, string name = null, string email = null, string[] roles = null)
+```
+Create a user (admins, the CLI, app code); no registration-mode checks.
+
+```d
+LoginResult checkLogin(string username, string password, out Json user)
+```
+Check a username and password (store and config users). `user` receives the session claims on success. Unknown users cost the same time as wrong passwords.
+
+```d
+Json claimsOf(const ref StoredUser u)
+```
+Session claims of a store user (stored in the login cookie).
+
+```d
+Json resolve(Json claims)
+```
+Validate cookie claims against the store and add fresh roles: returns the user, or `Json(null)` when the account was deleted, disabled, is pending or its logins were ended.
+
+```d
+Json oidcSignIn(string provider, string sub, string name, string email, string picture, string inviteCode = null)
+```
+An OIDC sign-in: records the user in the store on first sign-in (so admins can give roles or disable them), applies `allowed_email_domains`, `approval` and `invite`. Returns the session claims; throws `AccountError` when the user may not sign in.
+
+```d
+Json changePassword(string username, string current, string newPassword)
+```
+Change one's own password (needs the current one). Ends other logins; returns the new claims.
+
+```d
+void updateProfile(string username, string name, string email)
+```
+Change name and email.
+
+```d
+StoredUser* user(string username)
+```
+The store user, or `null`.
+
+```d
+StoredUser[] users()
+```
+All store users.
+
+```d
+void setPassword(string username, string newPassword)
+```
+Set a new password (admin or CLI); ends the user's logins.
+
+```d
+void setRoles(string username, string[] roles)
+```
+Replace the roles.
+
+```d
+void setDisabled(string username, bool disabled)
+```
+Disable (logins end) or enable an account.
+
+```d
+void approve(string username)
+```
+Approve a pending account.
+
+```d
+void logoutEverywhere(string username)
+```
+End all logins of the user (on every device).
+
+```d
+void deleteUser(string username)
+```
+Delete an account.
+
+```d
+string createInvite(string[] roles = null, uint days = 7, string createdBy = null)
+```
+Create a one-time invite valid for `days` days; returns the code (shown once; only its hash is stored). The sign-up link is `inviteLink(code)`.
+
+```d
+Invite[] invites()
+```
+Open invites (expired ones are removed).
+
+```d
+void revokeInvite(string id)
+```
+Revoke an invite by its `id`.
+
+```d
+string inviteLink(string code)
+```
+The sign-up link for an invite code (a path under the app's base; prefix your host).
+
+```d
+string createResetLink(string username, uint hours = 24)
+```
+A one-time link to set a new password, valid for `hours` (a path under the app's base). It stops working once the password changes.
+
+```d
+string resetTokenUser(string token)
+```
+The user a reset token is for, or null when it is invalid, expired or used.
+
+```d
+Json resetPassword(string token, string newPassword)
+```
+Set a new password with a reset token; returns the session claims.
+
+```d
+void useUserStore(UserStore store)
+```
+Use your own user store (e.g. a database) instead of `.streamlitd/users.json`. Call before `serve` / in `main`.
+
+```d
+Accounts accounts()
+```
+The server's account service (`null` when `[auth]` is not configured).
+
+#### `final class LoginThrottle`
+Counts failed logins per username and per client address and blocks further attempts for a while (in memory; a restart clears it).
+
+```d
+bool blocked(string user, string ip)
+```
+Too many recent failures for this username or address?
+
+```d
+void fail(string user, string ip)
+```
+Record a failure.
+
+```d
+void succeed(string user)
+```
+A successful login clears the username's failures.
+
+```d
+string safeNext(string next, string base)
+```
+A safe `next` target after login: a path under the app (`base` + "/..."), never another site.
 
 ## Session state (`st.session`)
 
@@ -1532,8 +1909,8 @@ A design style from `[theme.designs.<name>]` (see `registerDesign`).
 #### `struct ElementConfig`
 A custom element's browser files from `[elements.<name>]` (see `registerElement`).
 
-#### `struct ServerOptions`
-Server settings (see `serve`).
+#### `struct UserCommand`
+Server settings (see `serve`). A user-management command given on the command line.
 
 ```d
 string[] configSearchPaths()
@@ -1584,11 +1961,6 @@ void loadFavicon(string path, out immutable(ubyte)[] data, out string mime)
 ```
 Load the configured favicon file; throws if it cannot be read.
 
-```d
-bool originAllowed(string origin, string host, const string[] allowed)
-```
-Same-origin check for WebSocket and upload requests (protects against cross-site WebSocket hijacking). Requests without an Origin header (non-browser clients) pass.
-
 #### `alias RoutesFn`
 Registers your own HTTP routes (JSON APIs, webhooks, REST interfaces) on the app's server. See `StreamlitMain!(app, routes)` and docs/api-endpoints.md.
 
@@ -1606,6 +1978,11 @@ The logged-in streamlitd user for an API request (not logged in when auth is off
 UserInfo requireUser(HTTPServerRequest req, HTTPServerResponse res) @trusted
 ```
 Like `apiUser`, but answers 401 when nobody is logged in. Usable as a vibe.d REST `@before!requireUser("user")` filter.
+
+```d
+UserInfo requireRole(HTTPServerRequest req, HTTPServerResponse res, string role) @trusted
+```
+Like `requireUser`, but also answers 403 unless the user has `role` (e.g. "admin").  r.delete_("/api/items/:id", (req, res) { requireRole(req, res, "editor"); ... });
 
 ```d
 int serve(AppFn app, ServerOptions opts = ServerOptions.init, RoutesFn routes = null)
@@ -1741,6 +2118,21 @@ Click a button (call `run()` afterwards).
 int runCount()
 ```
 Number of script runs (full and fragment) started so far.
+
+```d
+AppTest loginAs(string username, string[] roles = null, string name = null, string email = null)
+```
+Act as a logged-in user (`st.user`), e.g. `at.loginAs("ann", ["admin"])`. A user of the account service set with `useAccounts` is taken from its store (its roles count then).
+
+```d
+AppTest logout()
+```
+Log out (`st.user.isLoggedIn` becomes false).
+
+```d
+static void useAccounts(Accounts a)
+```
+Use this account service for `st.accounts` and `st.userAdmin` (it is process-wide, like on the server; pass `null` to remove it). Example: `at.useAccounts(new Accounts(AccountSettings.init, new MemoryUserStore, Json.emptyObject, secret))`.
 
 ```d
 AppTest chat(string message)

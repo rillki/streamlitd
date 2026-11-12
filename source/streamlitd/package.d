@@ -25,7 +25,10 @@ public import streamlitd.widgets : TreeNode, DateRange;
 public import streamlitd.media : UploadedFile;
 public import streamlitd.pages : Page;
 public import streamlitd.cache : cacheData, cacheResource, cacheClear, clearAllCaches;
-public import streamlitd.server : serve, runMain, ServerOptions, RoutesFn, apiUser, requireUser;
+public import streamlitd.server : serve, runMain, ServerOptions, RoutesFn, apiUser, requireUser, requireRole;
+// accounts: sign-up, user store, roles (see docs/authentication.md)
+public import streamlitd.accounts : Accounts, AccountError, StoredUser, Invite, UserStore, MemoryUserStore,
+	JsonFileUserStore, useUserStore, accounts, Registration, AccountSettings;
 // HTTP API building blocks (FastAPI-like endpoints next to the app; see docs/api-endpoints.md)
 public import vibe.http.router : URLRouter;
 public import vibe.http.server : HTTPServerRequest, HTTPServerResponse;

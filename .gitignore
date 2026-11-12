@@ -24,3 +24,7 @@ examples/*/api
 tests/no-api-docs/no-api-docs
 tests/no-api-docs/.dub/
 examples/*/custom
+examples/*/accounts
+# user stores and generated cookie secrets of the examples
+examples/*/.streamlitd/users.json
+examples/*/.streamlitd/auth_secret

@@ -888,3 +888,77 @@ unittest
 	auto um = at.widget("user_menu", null);
 	assert(!um["auth"].get!bool && !um["loggedIn"].get!bool);
 }
+
+// ---------------------------------------------------------------- accounts: st.user roles, requireRole, userAdmin
+
+unittest
+{
+	// roles on st.user; requireRole stops the run with an error
+	string[] seen;
+	auto at = new AppTest((St st) {
+		seen = st.user.roles;
+		st.requireRole("editor");
+		st.write("secret");
+	});
+	at.loginAs("ann", ["editor"]).run();
+	assert(seen == ["editor"] && at.markdowns.canFind("secret"));
+	at.loginAs("bob", ["viewer"]).run();
+	assert(!at.markdowns.canFind("secret") && at.alerts.length == 1);
+	auto u = new AppTest((St st) { st.write(st.user.isAdmin, st.user.hasRole("x"), st.user.username); });
+	u.loginAs("root", ["admin"]).run();
+	assert(u.markdowns == ["`true` `false` root"], u.markdowns.to!string);
+}
+
+unittest
+{
+	// the admin panel works on the account service: add a user, roles, disable, reset link, invites
+	import std.string : indexOf;
+	auto secret = cast(immutable(ubyte)[]) "0123456789abcdef!";
+	AccountSettings s;
+	s.registration = Registration.invite;
+	auto acc = new Accounts(s, new MemoryUserStore, Json.emptyObject, secret, "/app");
+	AppTest.useAccounts(acc);
+	scope (exit) AppTest.useAccounts(null);
+	acc.createUser("root", "blue horse 7", "Root", null, ["admin"]);
+
+	auto at = new AppTest((St st) { st.userAdmin(); });
+	at.loginAs("bob", ["viewer"]).run(); // not in the store, no admin role
+	assert(at.alerts.length == 1 && at.elements("dataframe").length == 0);
+
+	at.loginAs("root").run();
+	assert(at.exceptions.length == 0, at.exceptions.to!string);
+	assert(at.elements("dataframe").length == 1);
+	// add a user through the form (the password is hashed by the service)
+	at.submitForm("Create user", [
+		at.widgetId("text_input", "Username"): Json("Carol"),
+		at.widgetId("text_input", "Password"): Json("green tree 42"),
+		at.widgetId("tags_input", "Roles"): parseJsonString(`["editor"]`),
+	]).run();
+	assert(at.exceptions.length == 0, at.exceptions.to!string);
+	auto carol = acc.user("carol");
+	assert(carol !is null && carol.roles == ["editor"] && carol.passwordHash.startsWith("pbkdf2_sha256$"));
+	// manage carol: roles, disable, reset link
+	at.setValue("selectbox", "Manage user", Json(1)).run(); // ["root", "carol"]
+	at.setValue("tags_input", "Roles", parseJsonString(`["editor", "viewer"]`)).run();
+	at.click("Save roles").run();
+	assert(acc.user("carol").roles == ["editor", "viewer"]);
+	at.click("Disable").run();
+	assert(acc.user("carol").disabled);
+	at.click("Create a password reset link").run();
+	auto link = at.elements("code")[0]["body"].get!string;
+	assert(link.startsWith("/app/auth/reset?token=") && acc.resetTokenUser(link[link.indexOf("token=") + 6 .. $]) is null); // disabled
+	at.click("Enable").run();
+	assert(!acc.user("carol").disabled && acc.resetTokenUser(link[link.indexOf("token=") + 6 .. $]) == "carol");
+	// the admin cannot disable or delete themselves
+	at.setValue("selectbox", "Manage user", Json(0)).run();
+	assert(at.widget("button", "Disable")["disabled"].get!bool && at.widget("button", "Delete user")["disabled"].get!bool);
+	// invites: a one-time link (the validity field has its own key and no stray help text)
+	auto days = at.widget("number_input", "Valid for (days)");
+	assert(days["id"].get!string.canFind("inv-days") && days["help"].type == Json.Type.null_, days.toString);
+	at.click("Create invite").run();
+	assert(acc.invites.length == 1);
+	auto inv = at.elements("code")[0]["body"].get!string;
+	assert(inv.startsWith("/app/auth/register?invite="));
+	auto u = acc.register("dave", "orange cat 3", null, null, inv[inv.indexOf("invite=") + 7 .. $]);
+	assert(u.username == "dave" && acc.invites.length == 0);
+}

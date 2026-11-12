@@ -1,0 +1,8 @@
+# Accounts without manual password hashes: people sign up on the login page, passwords are
+# hashed automatically, and the first account becomes the administrator.
+[auth]
+required = true             # the whole app is behind the login page
+registration = "invite"     # the first account needs no invite; later ones need an admin's invite
+signup_fields = ["name", "email"]
+# users_file = ".streamlitd/users.json"   # the default; STREAMLITD_AUTH_USERS_FILE overrides it
+# No cookie_secret: one is generated into .streamlitd/auth_secret on the first start.
