@@ -1139,6 +1139,16 @@ void restrictPermissions(string path)
 ```
 chmod 600 (owner only) where supported.
 
+```d
+Json userToJson(const ref StoredUser u)
+```
+A user as a JSON document (the format of users.json); handy for document databases.
+
+```d
+StoredUser userFromJson(Json j)
+```
+ditto, back from JSON.
+
 #### `enum Registration`
 Who may create an account (`[auth] registration`).
 

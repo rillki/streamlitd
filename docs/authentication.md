@@ -213,31 +213,263 @@ By default in `.streamlitd/users.json` (`[auth] users_file`; or the environment 
 - back it up like any data file;
 - a file that cannot be read stops the server; it is never reset silently.
 
-Several server processes must not share one file. For that, or to keep users in your database,
-implement `UserStore` and register it before the server starts:
+Several server processes must not share one file. For that, or to keep users next to the rest of
+your data, put them in your database: see the next section.
+
+### Example: users in your database
+
+Accounts can live in any database instead of `.streamlitd/`. Implement `UserStore` on top of it
+and register it before the server starts. Its methods are `find`, `findByEmail`, `list`, `count`,
+`insert`, `update`, `remove`, and for invites `putInvite`, `takeInvite`, `listInvites` and
+`removeInvite`; each is a small query.
+
+What the store must handle:
+- **Threads:** it must be thread-safe, because app scripts run on worker threads (use your
+  driver's connection pool).
+- **`find` speed:** `find` runs on every request that carries a login cookie and at the start of
+  each app run, because logins are checked against the store. Look users up by primary key.
+- **`list` size:** `list` serves the admin panel and the admin checks (the sign-up page, the
+  last-admin guard). Keep it affordable for your number of users.
+- **`count`:** read once at startup, to decide whether logins are on at all.
+
+Passwords are never stored in plain text: `Accounts` hashes them before it calls the store, so
+`insert` and `update` only ever see `passwordHash`.
+
+The tables (SQL here; any database works):
+
+```sql
+CREATE TABLE users (
+    username      TEXT PRIMARY KEY,   -- lowercase; "<provider>:<sub>" for SSO users
+    password_hash TEXT,               -- pbkdf2_sha256$..., empty for SSO users
+    name          TEXT,
+    email         TEXT UNIQUE,
+    roles         TEXT,               -- JSON array, e.g. ["admin","editor"]
+    disabled      BOOLEAN,
+    pending       BOOLEAN,
+    created       BIGINT,             -- Unix time
+    last_login    BIGINT,
+    login_version INTEGER,            -- ends older logins when it changes
+    provider      TEXT,
+    extra         TEXT                -- JSON: your own per-user data
+);
+CREATE TABLE invites (
+    code_hash  TEXT PRIMARY KEY,      -- SHA-256 of the invite code (the code itself is not stored)
+    roles      TEXT,
+    created    BIGINT,
+    expires    BIGINT,
+    created_by TEXT
+);
+CREATE TABLE notes (owner TEXT, text TEXT);   -- the app's own data, per user
+```
+
+The store and an app that saves its own data in the same database. `Db` stands for your
+database client (PostgreSQL, MySQL, SQLite, MongoDB, …): `db.run` runs a query and returns the
+rows, `db.save` writes a document.
 
 <!-- compile -->
 ```d
 import streamlitd;
 
-/// Users in memory: they are lost on restart (an example; put a database behind the same interface).
-class MyStore : MemoryUserStore
+/// Stand-in for your database client: replace the bodies with your driver's calls.
+/// It must be safe to use from several threads (e.g. a connection pool).
+struct Db
 {
-    protected override void changed()
-    {
-        // called after every change: write `users` and `invites` to your database here
-    }
+    static Db connect(string url) { return Db(); }
+    /// Run a query with `?` parameters; returns the rows as JSON objects (column → value).
+    Json[] run(string sql, Json[] args...) { return null; }
+    /// Insert or replace a document (for document databases).
+    void save(string collection, string key, Json doc) {}
+    /// Documents matching a filter (for document databases).
+    Json[] find(string collection, Json filter) { return null; }
 }
 
-shared static this() { useUserStore(new MyStore); } // before the server starts
+__gshared Db db;
 
-void app(St st) { st.write("Hello", st.user.name); }
+/// Accounts in the database: nothing is written to .streamlitd/users.json.
+class DbUserStore : UserStore
+{
+    static string jsonList(const string[] xs)   // ["a","b"] as text for a JSON column
+    {
+        auto a = Json.emptyArray;
+        foreach (x; xs)
+            a.appendArrayElement(Json(x));
+        return a.toString;
+    }
+
+    static T* boxed(T)(T v) { auto p = new T; *p = v; return p; }
+
+    static StoredUser rowToUser(Json r)
+    {
+        StoredUser u;
+        u.username = r["username"].get!string;
+        u.passwordHash = r["password_hash"].opt!string(null);
+        u.name = r["name"].opt!string(null);
+        u.email = r["email"].opt!string(null);
+        foreach (x; parseJsonString(r["roles"].opt!string("[]")))
+            u.roles ~= x.get!string;
+        u.disabled = r["disabled"].opt!bool(false);
+        u.pending = r["pending"].opt!bool(false);
+        u.created = r["created"].opt!long(0);
+        u.lastLogin = r["last_login"].opt!long(0);
+        u.loginVersion = cast(uint) r["login_version"].opt!long(1);
+        u.provider = r["provider"].opt!string(null);
+        u.extra = parseJsonString(r["extra"].opt!string("null"));
+        return u;
+    }
+
+    /// The values for the columns after `username`, in table order.
+    static Json[] userArgs(const ref StoredUser u)
+    {
+        return [Json(u.passwordHash), Json(u.name), Json(u.email), Json(jsonList(u.roles)),
+            Json(u.disabled), Json(u.pending), Json(u.created), Json(u.lastLogin), Json(u.loginVersion),
+            Json(u.provider), Json(u.extra.toString)];
+    }
+
+    static Invite rowToInvite(Json r)
+    {
+        Invite i;
+        i.codeHash = r["code_hash"].get!string;
+        foreach (x; parseJsonString(r["roles"].opt!string("[]")))
+            i.roles ~= x.get!string;
+        i.created = r["created"].opt!long(0);
+        i.expires = r["expires"].opt!long(0);
+        i.createdBy = r["created_by"].opt!string(null);
+        return i;
+    }
+
+    StoredUser* find(string username)
+    {
+        auto rows = db.run("SELECT * FROM users WHERE username = ?", Json(username));
+        return rows.length ? boxed(rowToUser(rows[0])) : null;
+    }
+
+    StoredUser* findByEmail(string email)
+    {
+        auto rows = db.run("SELECT * FROM users WHERE lower(email) = lower(?)", Json(email));
+        return rows.length ? boxed(rowToUser(rows[0])) : null;
+    }
+
+    StoredUser[] list()
+    {
+        StoredUser[] r;
+        foreach (row; db.run("SELECT * FROM users ORDER BY created"))
+            r ~= rowToUser(row);
+        return r;
+    }
+
+    size_t count()
+    {
+        auto rows = db.run("SELECT count(*) AS n FROM users");
+        return rows.length ? cast(size_t) rows[0]["n"].get!long : 0;
+    }
+
+    void insert(StoredUser u)
+    {
+        if (find(u.username) !is null)   // or catch your driver's unique-key error
+            throw new AccountError("The username \"" ~ u.username ~ "\" is taken.");
+        db.run("INSERT INTO users (username, password_hash, name, email, roles, disabled, pending, created, " ~
+            "last_login, login_version, provider, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [Json(u.username)] ~ userArgs(u));
+    }
+
+    void update(StoredUser u)
+    {
+        db.run("UPDATE users SET password_hash = ?, name = ?, email = ?, roles = ?, disabled = ?, pending = ?, " ~
+            "created = ?, last_login = ?, login_version = ?, provider = ?, extra = ? WHERE username = ?",
+            userArgs(u) ~ Json(u.username));
+    }
+
+    void remove(string username) { db.run("DELETE FROM users WHERE username = ?", Json(username)); }
+
+    void putInvite(Invite i)
+    {
+        db.run("INSERT INTO invites (code_hash, roles, created, expires, created_by) VALUES (?, ?, ?, ?, ?)",
+            Json(i.codeHash), Json(jsonList(i.roles)), Json(i.created), Json(i.expires),
+            Json(i.createdBy));
+    }
+
+    Invite* takeInvite(string codeHash)
+    {
+        // delete and return in one statement, so an invite works only once (PostgreSQL, SQLite 3.35+,
+        // MariaDB 10.5+; elsewhere SELECT ... FOR UPDATE and DELETE in one transaction)
+        auto rows = db.run("DELETE FROM invites WHERE code_hash = ? RETURNING *", Json(codeHash));
+        return rows.length ? boxed(rowToInvite(rows[0])) : null;
+    }
+
+    Invite[] listInvites()
+    {
+        Invite[] r;
+        foreach (row; db.run("SELECT * FROM invites ORDER BY created"))
+            r ~= rowToInvite(row);
+        return r;
+    }
+
+    // `id` is the start of the code hash (Invite.id)
+    void removeInvite(string id) { db.run("DELETE FROM invites WHERE code_hash LIKE ? || '%'", Json(id)); }
+}
+
+shared static this()
+{
+    db = Db.connect("postgresql://app@db.example.com/reports");
+    useUserStore(new DbUserStore);  // before the server starts
+}
+
+void app(St st)
+{
+    st.requireLogin();
+    st.title("Notes of " ~ st.user.name);
+    // the app's own data goes to the same database, keyed by the account name
+    auto text = st.textInput("New note");
+    if (st.button("Save") && text.length)
+        db.run("INSERT INTO notes (owner, text) VALUES (?, ?)", Json(st.user.username), Json(text));
+    foreach (row; db.run("SELECT text FROM notes WHERE owner = ?", Json(st.user.username)))
+        st.write("- " ~ row["text"].get!string);
+
+    // per-user settings can also live on the account itself, in `extra`
+    if (auto u = st.accounts.user(st.user.username))
+        if (st.button("Remember the dark mode"))
+        {
+            u.extra = Json(["mode": Json("dark")]);
+            st.accounts.store.update(*u);
+        }
+}
 
 mixin StreamlitMain!app;
 ```
 
-A `UserStore` has `find`, `findByEmail`, `list`, `count`, `insert`, `update`, `remove` and
-the invite methods. It must be thread-safe, because app scripts run on worker threads.
+With a document database, store whole documents instead of columns. `userToJson`/`userFromJson`
+convert a user (the same format as `users.json`):
+
+<!-- no-compile -->
+```d
+void insert(StoredUser u) { db.save("users", u.username, userToJson(u)); }
+void update(StoredUser u) { db.save("users", u.username, userToJson(u)); }
+StoredUser* find(string username)
+{
+    auto rows = db.find("users", Json(["username": Json(username)]));
+    if (!rows.length)
+        return null;
+    auto u = new StoredUser;
+    *u = userFromJson(rows[0]);
+    return u;
+}
+```
+
+To keep `.streamlitd/` empty, also:
+- **Set the cookie secret:** set `cookie_secret` in secrets.toml or the environment
+  (`STREAMLITD_AUTH_COOKIE_SECRET`). Otherwise one is generated into `.streamlitd/auth_secret`.
+  Several servers sharing one database need the same secret.
+- **The users file is unused:** with your own store, `users_file` is not read or written, and
+  `--add-user`, `--list-users` and the admin panel work on your database.
+- **Some state stays in memory:** the login-attempt counters live in each server process.
+- **Several servers on one database:**
+  - logins ended by a password change, a reset, disabling or **Log out everywhere** end on every
+    server, because each request reads the store;
+  - the guard that only one first sign-up becomes admin works within one process, so create
+    the first admin with `--add-user <name> --roles admin` (or start with a single server).
+- **Logins are switched on at startup:** if the only logins are accounts in the store, the
+  server checks for them once at startup. After adding the first user with `--add-user` on such
+  a server, restart it.
 
 ## Users in secrets.toml (manual hashes)
 

@@ -28,7 +28,7 @@ public import streamlitd.cache : cacheData, cacheResource, cacheClear, clearAllC
 public import streamlitd.server : serve, runMain, ServerOptions, RoutesFn, apiUser, requireUser, requireRole;
 // accounts: sign-up, user store, roles (see docs/authentication.md)
 public import streamlitd.accounts : Accounts, AccountError, StoredUser, Invite, UserStore, MemoryUserStore,
-	JsonFileUserStore, useUserStore, accounts, Registration, AccountSettings;
+	JsonFileUserStore, useUserStore, accounts, Registration, AccountSettings, userToJson, userFromJson;
 // HTTP API building blocks (FastAPI-like endpoints next to the app; see docs/api-endpoints.md)
 public import vibe.http.router : URLRouter;
 public import vibe.http.server : HTTPServerRequest, HTTPServerResponse;

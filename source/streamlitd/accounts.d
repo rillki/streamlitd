@@ -257,6 +257,7 @@ void restrictPermissions(string path)
 
 private enum octal600 = 0x180; // 0600
 
+/// A user as a JSON document (the format of users.json); handy for document databases.
 Json userToJson(const ref StoredUser u)
 {
 	auto j = Json.emptyObject;
@@ -278,6 +279,7 @@ Json userToJson(const ref StoredUser u)
 	return j;
 }
 
+/// ditto, back from JSON.
 StoredUser userFromJson(Json j)
 {
 	StoredUser u;

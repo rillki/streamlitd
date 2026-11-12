@@ -74,11 +74,16 @@ struct AuthConfig
 	/// There is an `[auth]` section (the CLI user commands work then).
 	bool configured;
 
+	/// The user store had accounts when the server started (counted once: `enabled` runs on
+	/// every request, and a database store would be queried each time).
+	bool storeUsersAtStart;
+
 	/// Is there any way to log in (users, providers, sign-up, or accounts in the user store)?
+	/// Decided at startup, like the login routes.
 	bool enabled() const
 	{
-		return providers.length > 0 || users.length > 0
-			|| (accounts !is null && (accounts.settings.registration != Registration.off || (cast() accounts).store.count > 0));
+		return providers.length > 0 || users.length > 0 || storeUsersAtStart
+			|| (accounts !is null && accounts.settings.registration != Registration.off);
 	}
 
 	/// Is there a password login (config users, sign-up, or password users in the store)?
@@ -166,6 +171,7 @@ AuthConfig loadAuthConfig(Json configAuth, Json secretsAuth, string basePath, Us
 	if (store is null)
 		store = hasSection ? new JsonFileUserStore(s.usersFile) : new MemoryUserStore;
 	immutable storeUsers = store.count > 0;
+	c.storeUsersAtStart = storeUsers;
 	if (c.users.length || c.providers.length || c.required || s.registration != Registration.off || storeUsers)
 	{
 		if (secret is null || secret.length < 16)
@@ -981,4 +987,23 @@ unittest
 	assert(clientIp(c, req) == "10.0.0.7");
 	c.trustProxy = false;
 	assert(clientIp(c, req) != "10.0.0.7" && clientIp(c, req) != "6.6.6.6");
+}
+
+unittest
+{
+	// a store's count() is asked once at startup, not on every request
+	static class CountingStore : MemoryUserStore
+	{
+		size_t counted;
+		override size_t count() { counted++; return super.count(); }
+	}
+	auto st = new CountingStore;
+	StoredUser u;
+	u.username = "ann";
+	st.insert(u);
+	auto c = loadAuthConfig(parseJsonString(`{"registration":"off","cookie_secret":"0123456789abcdef!"}`), Json.emptyObject, "", st);
+	assert(c.enabled && st.counted == 1);
+	foreach (_; 0 .. 5)
+		assert(c.enabled);
+	assert(st.counted == 1);
 }
