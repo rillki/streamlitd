@@ -207,7 +207,7 @@ private void handleWS(scope WebSocket sock) @system
 	sess.ui = jo("rerunButton", g_opts.ui.rerunButton, "settingsButton", g_opts.ui.settingsButton,
 		"rerunShortcut", g_opts.ui.rerunShortcut);
 	g_sessions[sess.id] = sess;
-	auto ev = createManualEvent();
+	auto ev = createSharedManualEvent(); // shared: FragmentRef.refresh and refreshFragments may wake it from any thread
 	sess.onRerunRequested = () { ev.emit(); };
 	sess.yielder = () { yield(); };
 

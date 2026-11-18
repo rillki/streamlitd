@@ -186,6 +186,61 @@ st.fragment((St f) { f.write("Updated every 5 seconds"); }, runEvery: 5);
 - `runEvery: seconds` reruns the fragment periodically, for live dashboards.
 - [`st.dialog`](layout-and-navigation.md#dialogs) bodies are fragments too.
 
+### Updates driven by events
+
+`runEvery` alone reruns a fragment on every tick, even when nothing changed, and a change waits
+for the next tick. Three additions let the data decide (streamlitd only):
+
+| | What it does | Called from |
+|---|---|---|
+| `refreshWhen: () => bool` | asked when a `runEvery` run is due; `false` skips it (nothing runs, nothing is sent) until the next period | the server's event loop: keep it light (a version counter, a file's modification time); no blocking I/O |
+| `refreshOn: "orders"` + `refreshFragments("orders")` | reruns every fragment subscribed to the topic, in every open browser tab, at once | anywhere, any thread: API routes, file watchers, queue consumers, background tasks |
+| `auto live = st.fragment(...); live.refresh()` | reruns that one fragment in that one tab, at once | anywhere, any thread; does nothing once the tab is closed or the fragment is no longer drawn |
+
+<!-- compile -->
+```d
+import streamlitd;
+import core.atomic : atomicLoad, atomicOp;
+
+shared long g_version;            // bumped whenever the orders change
+
+void app(St st)
+{
+    // pushed: reruns as soon as an order is saved, in every open tab
+    st.fragment((St f) { f.metric("Open orders", atomicLoad(g_version)); }, refreshOn: "orders");
+
+    // polled, but only when something changed: asked every 10 s, runs when the version moved
+    auto seen = new long;
+    *seen = -1;
+    st.fragment((St f) {
+        *seen = atomicLoad(g_version);
+        f.write("Report for version", *seen);
+    }, runEvery: 10, refreshWhen: () => atomicLoad(g_version) != *seen);
+}
+
+void routes(URLRouter r)
+{
+    r.post("/api/orders", (HTTPServerRequest req, HTTPServerResponse res) {
+        // ... save the order ...
+        atomicOp!"+="(g_version, 1);
+        refreshFragments("orders");     // the open pages update now
+        res.writeJsonBody(["ok": true]);
+    });
+}
+
+mixin StreamlitMain!(app, routes);
+```
+
+- `refreshOn` takes several topics separated by commas (`"orders, stock"`).
+- The two styles combine: push with `refreshFragments` for no delay, and keep a slow `runEvery`
+  with `refreshWhen` as a safety net in case an event is missed.
+- A push that arrives while the fragment is running does not interrupt it: the run finishes, then
+  the fragment runs once more (several pushes in between count as one). A widget interaction, as
+  before, restarts it at once.
+- A fragment rerun is the same as one started by a widget inside it: its function runs with the
+  values of the full run that drew it, and only its part of the page is sent.
+- `examples/fragments` has a live demo: a background thread calls `refreshFragments`.
+
 ## Caching
 
 <!-- no-compile -->

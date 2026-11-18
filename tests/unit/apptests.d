@@ -985,3 +985,76 @@ unittest
 	auto bad = new AppTest((St st) { st.setPageConfig(rerunButton: "footer"); }).run();
 	assert(bad.exceptions.length == 1);
 }
+
+// ---------------------------------------------------------------- event-driven fragment refresh (issue #1)
+
+unittest
+{
+	// FragmentRef.refresh(): reruns only that fragment; a no-op once the fragment is gone
+	int full, frag;
+	bool draw = true;
+	FragmentRef live;
+	auto at = new AppTest((St st) {
+		full++;
+		if (draw)
+			live = st.fragment((St f) { frag++; f.write("tick", frag); }, key: "live");
+	});
+	at.run();
+	assert(full == 1 && frag == 1 && live.alive && live.id == "fk:live");
+	assert(live.refresh());
+	at.run();
+	assert(full == 1 && frag == 2, [full, frag].to!string); // the fragment only
+	draw = false;
+	at.run();                                                // a full run that no longer draws it
+	assert(full == 2 && !live.alive && !live.refresh());
+	assert(FragmentRef.init.refresh() == false);
+}
+
+unittest
+{
+	// refreshFragments(topic): every open session's subscribed fragments, from any thread
+	import core.thread : Thread;
+	int a, b, other;
+	auto app1 = new AppTest((St st) {
+		st.fragment((St f) { a++; }, refreshOn: "orders, stock");
+		st.fragment((St f) { other++; }, refreshOn: "news");
+	});
+	auto app2 = new AppTest((St st) { st.fragment((St f) { b++; }, refreshOn: "orders"); });
+	app1.run();
+	app2.run();
+	assert(a == 1 && b == 1 && other == 1);
+	size_t queued;
+	auto t = new Thread({ queued = refreshFragments("orders"); });
+	t.start();
+	t.join();
+	assert(queued == 2);
+	app1.run();
+	app2.run();
+	assert(a == 2 && b == 2 && other == 1, [a, b, other].to!string);
+	assert(refreshFragments("stock") == 1 && refreshFragments("nobody") == 0);
+	app1.run();
+	assert(a == 3);
+	app1.sess.close();
+	assert(refreshFragments("stock") == 0); // closed sessions are not asked
+}
+
+unittest
+{
+	// a push that arrives while the fragment is running does not interrupt it: it finishes, then
+	// runs once more (frequent pushes must not starve a fragment)
+	int started, finished;
+	auto at = new AppTest((St st) {
+		st.fragment((St f) {
+			started++;
+			if (started == 2)
+				refreshFragments("busy"); // an event during this fragment run
+			f.write("run", started);       // the next st.* call: interrupted without the fix
+			finished++;
+		}, refreshOn: "busy");
+	});
+	at.run();
+	assert(started == 1 && finished == 1);
+	assert(refreshFragments("busy") == 1);
+	at.run();
+	assert(started == 3 && finished == 3, [started, finished].to!string); // run 2 finished, then exactly one more
+}

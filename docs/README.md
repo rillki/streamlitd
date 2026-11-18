@@ -47,7 +47,7 @@ The [`examples/`](../examples) folder contains runnable apps. Each one is used b
 | `data` | DataFrame, dataframe/table/data editor, all chart types, upload/download, images |
 | `multipage` | top navigation with a section, breadcrumbs, header bar, banner, footer, menu button, pagination, chat UI, query params |
 | `themes` | design gallery: design styles, color schemes, modes and the viewer appearance menu |
-| `fragments` | `st.fragment`, auto-refresh, `st.dialog`, `st.status`, pills/segmented/feedback |
+| `fragments` | `st.fragment`, auto-refresh, updates pushed by events (`refreshFragments`, `refreshWhen`), `st.dialog`, `st.status`, pills/segmented/feedback |
 | `extras` | LaTeX, code highlighting, Plotly, maps, custom components |
 | `prod` | `config.toml`, secrets, base URL path, worker threads |
 | `auth` | users in secrets.toml and OIDC login, user menu, admin panel for SSO users |

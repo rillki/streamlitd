@@ -69,9 +69,16 @@ final class FragmentInfo
 	int[] path;          /// container path of the fragment block
 	string formId;
 	double runEvery = 0; /// seconds; 0 = only on interaction
+	/// Asked when a `runEvery` run is due: false skips it (and restarts the period).
+	bool delegate() refreshWhen;
+	string[] topics;     /// `refreshOn`: rerun on `refreshFragments(topic)`
 	bool[string] widgetIds;
 	MonoTime lastRun;
 }
+
+// ---------------------------------------------------------------- open sessions, for refreshFragments
+
+// refreshFragments(topic) is in streamlitd.fragments; it asks each open session's refreshTopic.
 
 /// Outcome of a script run.
 enum RunStatus { ok, error, stopped, rerun }
@@ -143,6 +150,10 @@ final class AppSession
 	package FragmentInfo[string] newFragments;
 	/// Ids of registered fragments (guarded by `lock`; readable from the receiving task).
 	private bool[string] knownFragments;
+	private string[][string] fragmentTopics; // fid → topics, under `lock` (read from other threads)
+	/// Fragments queued only by a push (`refresh`, `refreshFragments`), under `lock`: unlike a
+	/// widget interaction, a push does not interrupt a run of the same fragment in progress.
+	private bool[string] pushedOnly;
 	/// Called (from the receiving task) whenever a rerun was requested.
 	void delegate() onRerunRequested;
 	/// Lets the event loop process incoming messages during long runs (set by the server).
@@ -200,6 +211,8 @@ final class AppSession
 		this.transport = transport;
 		this.session = new SessionState;
 		this.lock = new Mutex;
+		import streamlitd.liveregistry : addLive;
+		addLive(this);
 	}
 
 	/// Mark the session closed (aborts a running script at its next `st.*` call).
@@ -207,6 +220,52 @@ final class AppSession
 	{
 		synchronized (lock)
 			closed = true;
+		import streamlitd.liveregistry : removeLive;
+		removeLive(this);
+	}
+
+	/// Is fragment `fid` on the page (drawn by the last finished run)? Thread-safe.
+	bool isFragmentKnown(string fid)
+	{
+		synchronized (lock)
+			return (fid in knownFragments) !is null;
+	}
+
+	/// Rerun fragment `fid` now (`FragmentRef.refresh`). Thread-safe. Does nothing when the session
+	/// is closed or the fragment is no longer on the page (never a full rerun). Returns whether it
+	/// was queued.
+	bool requestFragmentRefresh(string fid)
+	{
+		synchronized (lock)
+		{
+			if (closed || fid !in knownFragments)
+				return false;
+			queuePush(fid);
+		}
+		if (onRerunRequested !is null)
+			onRerunRequested();
+		return true;
+	}
+
+	/// Rerun the fragments subscribed to `topic` (`refreshFragments`). Thread-safe.
+	size_t refreshTopic(string topic)
+	{
+		import std.algorithm : canFind;
+		size_t n;
+		synchronized (lock)
+		{
+			if (closed)
+				return 0;
+			foreach (fid, topics; fragmentTopics)
+				if (topics.canFind(topic) && fid in knownFragments)
+				{
+					queuePush(fid);
+					n++;
+				}
+		}
+		if (n && onRerunRequested !is null)
+			onRerunRequested();
+		return n;
 	}
 
 	/// Thread-safe read of the closed flag.
@@ -327,8 +386,20 @@ final class AppSession
 			onRerunRequested();
 	}
 
+	/// Queue a pushed rerun (caller holds `lock`).
+	private void queuePush(string fid)
+	{
+		import std.algorithm : canFind;
+		if (!pendingFragments.canFind(fid))
+		{
+			pendingFragments ~= fid;
+			pushedOnly[fid] = true;
+		}
+	}
+
 	private void queueFragment(string fid)
 	{
+		pushedOnly.remove(fid); // an interaction: interrupts a run of this fragment, as before
 		import std.algorithm : canFind;
 		if (!pendingFragments.canFind(fid))
 			pendingFragments ~= fid;
@@ -351,7 +422,9 @@ final class AppSession
 		{
 			import std.algorithm : canFind;
 			// a fragment run is only interrupted by a full rerun or a new request for the same fragment
-			abort = closed || (running && (rerunRequested || (runningFragment && pendingFragments.canFind(currentFragment))));
+			// (pushes do not interrupt: the run finishes, then the fragment runs once more)
+			abort = closed || (running && (rerunRequested || (runningFragment && pendingFragments.canFind(currentFragment)
+				&& currentFragment !in pushedOnly)));
 		}
 		if (abort)
 			throw new RerunException;
@@ -418,11 +491,13 @@ final class AppSession
 			{
 				rerunRequested = false;
 				pendingFragments = null; // a full run covers every fragment
+				pushedOnly = null;
 			}
 			else
 			{
 				import std.algorithm : remove;
 				pendingFragments = pendingFragments.remove!(f => f == fragmentId);
+				pushedOnly.remove(fragmentId);
 			}
 			updates = pendingUpdates;
 			pendingUpdates = null;
@@ -576,8 +651,13 @@ final class AppSession
 		synchronized (lock)
 		{
 			knownFragments = null;
-			foreach (k, _; fragments)
+			fragmentTopics = null;
+			foreach (k, f; fragments)
+			{
 				knownFragments[k] = true;
+				if (f.topics.length)
+					fragmentTopics[k] = f.topics.dup;
+			}
 		}
 
 		if (isFragment)
@@ -611,7 +691,8 @@ final class AppSession
 	}
 
 	/// Register a fragment created during the current run.
-	package FragmentInfo registerFragment(string fid, void delegate(St) fn, int[] path, string formId, double runEvery)
+	package FragmentInfo registerFragment(string fid, void delegate(St) fn, int[] path, string formId, double runEvery,
+		bool delegate() refreshWhen = null, string[] topics = null)
 	{
 		auto info = new FragmentInfo;
 		info.id = fid;
@@ -619,6 +700,8 @@ final class AppSession
 		info.path = path;
 		info.formId = formId;
 		info.runEvery = runEvery;
+		info.refreshWhen = refreshWhen;
+		info.topics = topics;
 		info.lastRun = MonoTime.currTime;
 		if (auto old = fid in fragments)
 			info.lastRun = old.lastRun;
@@ -649,6 +732,12 @@ final class AppSession
 				continue;
 			auto period = (cast(long)(f.runEvery * 1000)).msecs;
 			auto left = (f.lastRun + period) - now;
+			if (left <= Duration.zero && f.refreshWhen !is null && !askRefreshWhen(f))
+			{
+				// nothing changed: skip this run, ask again after another period
+				f.lastRun = now;
+				left = period;
+			}
 			if (left <= Duration.zero)
 			{
 				due = fid;
@@ -658,6 +747,29 @@ final class AppSession
 				best = left;
 		}
 		return best;
+	}
+
+	private bool refreshWhenFailed;
+
+	/// `refreshWhen` of a due fragment; an exception counts as "changed" (logged once per session).
+	private bool askRefreshWhen(FragmentInfo f)
+	{
+		try
+			return f.refreshWhen();
+		catch (Exception e)
+		{
+			if (!refreshWhenFailed)
+			{
+				refreshWhenFailed = true;
+				try
+				{
+					import std.stdio : stderr;
+					stderr.writeln("streamlitd: refreshWhen of fragment ", f.id, " failed (running it anyway): ", e.msg);
+				}
+				catch (Exception) {}
+			}
+			return true;
+		}
 	}
 
 	/// Run while reruns are pending (used by headless drivers / tests).
@@ -680,4 +792,32 @@ final class AppSession
 			case RunStatus.rerun: return "rerun";
 		}
 	}
+}
+
+unittest
+{
+	// refreshWhen: a due runEvery fragment is skipped (and its period restarted) while it says false
+	import core.time : seconds;
+	auto s = new AppSession((St st) {}, null);
+	scope (exit) s.close();
+	bool changed;
+	auto f = new FragmentInfo;
+	f.id = "f";
+	f.runEvery = 1;
+	f.refreshWhen = () => changed;
+	f.lastRun = MonoTime.currTime - 5.seconds;
+	s.fragments["f"] = f;
+	string due;
+	auto wait = s.nextFragmentDue(due);
+	assert(due is null && wait > Duration.zero && wait <= 1.seconds);
+	assert(MonoTime.currTime - f.lastRun < 1.seconds); // restarted
+	changed = true;
+	f.lastRun = MonoTime.currTime - 5.seconds;
+	s.nextFragmentDue(due);
+	assert(due == "f");
+	// an exception counts as "changed"
+	f.refreshWhen = () { throw new Exception("boom"); };
+	due = null;
+	s.nextFragmentDue(due);
+	assert(due == "f");
 }

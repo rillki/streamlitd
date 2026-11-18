@@ -94,6 +94,7 @@ and `labelVisibility: "visible" | "hidden" | "collapsed"`.
 | `with st.chat_message("user"):` | `with (st.chatMessage("user")) { ... }` |
 | `@st.dialog("Title")` + call | `st.dialog("Title", (St d) { ... }, width: "large")` |
 | `@st.fragment(run_every=5)` + call | `st.fragment((St f) { ... }, runEvery: 5)` |
+| (no equivalent) | `st.fragment(..., runEvery: 10, refreshWhen: () => changed)`, `st.fragment(..., refreshOn: "orders")` + `refreshFragments("orders")` from any thread, `st.fragment(...).refresh()` ([events](concepts.md#updates-driven-by-events)) |
 | `st.date_input("Period", (start, end))` | `DateRange r = st.dateRangeInput("Period", DateRange(start, end));` |
 | (no equivalent) | `menuButton`, `pagination`, `card`, `stepper`, `skeleton`, `timeline`, `avatar`, `details`, `tagsInput`, `treeSelect`, `copyButton` ([More elements](more-elements.md)) |
 

@@ -76,3 +76,25 @@ test("pills, segmented control, feedback, link button, badge", async ({ page }) 
   await expect(page.getByTestId("st-link-button")).toHaveAttribute("href", "https://dlang.org");
   await expect(page.getByTestId("st-badge")).toHaveText(/Beta/);
 });
+
+test("events push a fragment at once (refreshFragments); refreshWhen skips idle polls", async ({ page }) => {
+  await open(page, "fragments");
+  const events = page.getByTestId("st-metric").filter({ hasText: "Events received" }).locator(".metric-value");
+  const polled = page.getByText(/^polled view: /);
+  const ranTimes = async () => +(await polled.textContent()).match(/ran (\d+) times/)[1];
+  // idle: the 1-second poll does not run while nothing changed
+  const r0 = await ranTimes();
+  await page.waitForTimeout(2500);
+  expect(await ranTimes()).toBe(r0);
+  // an event from another thread: the subscribed fragment reruns without any user action
+  const e0 = +(await events.textContent());
+  await rerun(page, () => page.getByRole("button", { name: "Simulate an event" }).click());
+  const runs = await fullRuns(page);
+  await expect(events).toHaveText(String(e0 + 1), { timeout: 3000 });
+  expect(await fullRuns(page)).toBe(runs); // pushed into the fragment only
+  // and the poll sees the change once
+  await expect(polled).toContainText(`polled view: ${e0 + 1} events`, { timeout: 3000 });
+  const r1 = await ranTimes();
+  await page.waitForTimeout(2500);
+  expect(await ranTimes()).toBe(r1);
+});

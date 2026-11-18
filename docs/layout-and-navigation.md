@@ -127,7 +127,9 @@ s.update(label: "Done", state: "complete", expanded: 0);   // states: running, c
 ## Fragments
 
 `st.fragment((St f) { ... }, runEvery: seconds)` draws a part of the page that reruns
-independently. See [Core concepts → Fragments](concepts.md#fragments).
+independently. See [Core concepts → Fragments](concepts.md#fragments), and
+[Updates driven by events](concepts.md#updates-driven-by-events) for `refreshWhen`, `refreshOn` /
+`refreshFragments(topic)` and `FragmentRef.refresh()`.
 
 ![fragments, status and newer widgets](images/fragments.png)
 

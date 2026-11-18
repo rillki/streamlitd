@@ -39,7 +39,7 @@ public import streamlitd.openapi : registerApi, ApiDoc, apiDoc, apiDocsCompiledI
 // route attributes (@path, @method, @before, @queryParam, ...) come from `import vibe.web.rest;`
 public import streamlitd.secrets : Secrets, secrets;
 public import streamlitd.components : Component, declareComponent;
-public import streamlitd.fragments : StatusContainer;
+public import streamlitd.fragments : StatusContainer, FragmentRef, refreshFragments;
 public import streamlitd.theme : Theme, ThemeTokens, DesignStyle, colorSchemeNames, designNames, themePresetNames,
 	fontSans, fontSerif, fontMono, fontRounded, registerColorScheme, registerDesign;
 // app-defined native elements and widgets (see docs/extending.md)

@@ -37,7 +37,7 @@ import streamlitd.dataelements : DataElements;
 import streamlitd.charts : Charts;
 import streamlitd.mediaelements : MediaElements;
 import streamlitd.pages : PageElements;
-import streamlitd.fragments : FragmentElements, StatusContainer;
+import streamlitd.fragments : FragmentElements, StatusContainer, FragmentRef;
 import streamlitd.components : ComponentElements, ComponentsApi, findComponent;
 import streamlitd.extensions : CustomElements, isElementRegistered;
 import streamlitd.useradmin : AccountElements;

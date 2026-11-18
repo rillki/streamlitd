@@ -142,6 +142,9 @@ API handlers and app sessions run in the same process:
 - Module-level data that both sides change needs a lock, because sessions may run on worker
   threads (`[server] scriptThreads`). `examples/api` uses a `Mutex`.
 - `st.session` and widgets exist only inside a session; an API request has no session.
+- To update open pages after a request changed data, call `refreshFragments("topic")`: every
+  fragment drawn with `refreshOn: "topic"` reruns at once, in every tab
+  ([Updates driven by events](concepts.md#updates-driven-by-events)).
 
 ## OpenAPI and Swagger UI
 

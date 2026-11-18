@@ -543,6 +543,29 @@ void chatMessage(string name, scope void delegate(St) body_, string avatar = nul
 
 Source: [`source/streamlitd/fragments.d`](../source/streamlitd/fragments.d)
 
+#### `struct FragmentRef`
+Handle returned by `st.fragment`: rerun that fragment on demand. Keep it (e.g. in `st.session` or your own registry) and call `refresh()` from anywhere: a file watcher, a queue consumer, a background thread. Thread-safe; does nothing once the browser tab is closed or the fragment is no longer drawn. For events that concern every open tab, use `refreshOn` with `refreshFragments(topic)` instead.
+
+```d
+bool refresh()
+```
+Rerun the fragment now (without waiting for `runEvery`). Returns whether it was queued.
+
+```d
+bool alive()
+```
+Is the fragment still on an open page? (Its last full run drew it.)
+
+```d
+@property string id() const
+```
+The fragment's id (`"fk:<key>"` with a `key`).
+
+```d
+size_t refreshFragments(string topic)
+```
+Rerun every fragment drawn with `refreshOn: topic`, in every open browser tab, now, without waiting for `runEvery`. Thread-safe: call it from API routes, background threads, file watchers or app code. Returns the number of fragments queued.
+
 #### `final class StatusContainer`
 Handle returned by `st.status`: a container (use it like `st`) whose label/state can change.
 
@@ -552,9 +575,9 @@ void update(string label = null, string state = null, int expanded = -1)
 Change label, state ("running", "complete", "error") and/or expansion (-1 = keep, 0/1).
 
 ```d
-void fragment(void delegate(St) body_, double runEvery = 0, string key = null)
+FragmentRef fragment(void delegate(St) body_, double runEvery = 0, string key = null, bool delegate() refreshWhen = null, string refreshOn = null)
 ```
-`st.fragment`: the body reruns on its own when a widget inside it changes, without rerunning the whole app. `runEvery` (seconds) reruns it periodically (live dashboards). Pass a lambda `(St f) { ... }`; for a named function use `toDelegate(&fn)`.
+`st.fragment`: the body reruns on its own when a widget inside it changes, without rerunning the whole app. `runEvery` (seconds) reruns it periodically (live dashboards). Pass a lambda `(St f) { ... }`; for a named function use `toDelegate(&fn)`. Event-driven updates (streamlitd only): `refreshWhen` is asked each time a `runEvery` run is due, and `false` skips that run (nothing runs, nothing is sent) until the next period; it runs on the server's event loop, so keep it light (a version counter, a file's modification time). `refreshOn` subscribes the fragment to topics (comma-separated), which `refreshFragments(topic)` reruns at once in every open tab, from any thread. The returned `FragmentRef` reruns this fragment in this tab with `refresh()`.
 
 ```d
 void dialog(string title, void delegate(St) body_, string width = "small", bool dismissible = true, string key = null)

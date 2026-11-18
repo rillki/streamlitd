@@ -36,7 +36,9 @@ test("defaults: ⟳ and ⚙ in the header; the sidebar button opens the panel ne
   await panel.getByRole("button", { name: "Dark" }).click();
   await expect(panel.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("st-design-select").click();
+  await expect(page.locator("#stPopups .st-popup")).toBeVisible(); // Esc must reach the open list
   await page.keyboard.press("Escape");
+  await expect(page.locator("#stPopups .st-popup")).toHaveCount(0);
   await expect(panel).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
