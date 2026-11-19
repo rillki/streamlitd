@@ -27,9 +27,13 @@ mixin template LayoutElements()
 
 	/// A card (streamlitd only): a framed box with an optional image (URL) or icon, a title and a
 	/// subtitle. Returns its body; put text, metrics and buttons in it. Use `st.columns` for a grid.
-	St card(string title = null, string subtitle = null, string image = null, string icon = null, string key = null)
+	/// With `link` (an app page's URL path, or an http(s) URL) the whole card is a link; buttons in
+	/// it still work.
+	St card(string title = null, string subtitle = null, string image = null, string icon = null, string key = null,
+		string link = null)
 	{
-		return emitBlock("card", jo("title", title, "subtitle", subtitle, "image", image, "icon", icon, "key", key));
+		return emitBlock("card", jo("title", title, "subtitle", subtitle, "image", image, "icon", icon, "key", key,
+			"link", link));
 	}
 
 	/// `st.container`. `height` > 0 makes it scrollable.

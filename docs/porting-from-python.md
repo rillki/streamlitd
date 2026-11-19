@@ -167,6 +167,30 @@ Python's `pages/` folder convention does not exist. Use `st.navigation([Page(&fn
 `.streamlit/config.toml` and `.streamlit/secrets.toml` are read as they are. Unsupported
 options are ignored with a warning. See [Configuration](configuration.md).
 
+### User text
+
+Python apps that put user input into `st.markdown` render it as Markdown, and so would a direct
+port. Where people see each other's text, wrap it in `escapeMarkdown`
+([User text in Markdown](concepts.md#user-text-in-markdown)). For exports opened in Excel, use
+`toCsv(',', true)`. [Example apps](examples.md#pitfalls) lists more of what a shared app must
+check.
+
+### What streamlitd adds for business apps
+
+Things Python apps build by hand with injected HTML/CSS/JS are built in: tables with column
+formats, totals, colours, selection and tree rows; a calendar/schedule grid; nested dialogs; a
+folding sidebar with badges; link cards; KPI tiles with trends; legends, proportion bars, feeds and
+empty states; exports built on click; `st.context` cookies for single sign-on; segmented controls
+that cannot be cleared; keyed widgets that keep their value across pages. See
+[More elements](more-elements.md) and [Data & charts](data-and-charts.md).
+
+### A larger app
+
+A Python app that grew into a `pages/` folder, a `db.py` and a `utils.py` maps onto modules: one
+module per page, a store module, a module of shared helpers. [Example apps](examples.md) walks
+through five such apps, with their tests, and lists the pitfalls of the move (closures over loop
+variables, dialogs opened from session state, slow blocking calls).
+
 ### Execution and performance
 
 Each script run executes on a worker thread, so CPU-heavy code doesn't block other users. D code is
@@ -177,9 +201,8 @@ recompile and restart (`dub run`), and the browser reconnects by itself.
 
 Not available yet:
 
-- `st.connection`
-- `column_config`
-- dataframe and chart selection events (except Plotly)
+- `st.connection` (use a dub package: vibe-d-postgresql, mongo, ... with `cacheResource`)
+- Vega-Lite chart selection events (Plotly and tables have them)
 - `st.pyplot`, `st.pydeck_chart`
 - `st.camera_input` / `st.audio_input`
 - Arrow data in components

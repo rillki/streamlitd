@@ -3,9 +3,12 @@ dub.selections.json
 *.a
 *.o
 streamlitd-test-*
+# dub test builds of the examples (executables): <name>-test-application
+*-test-application
+*-test-library
 examples/*/hello
 examples/*/widgets
-examples/*/data
+examples/data/data
 examples/*/multipage
 examples/*/themes
 examples/*/.dub/
@@ -28,3 +31,13 @@ examples/*/accounts
 # user stores and generated cookie secrets of the examples
 examples/*/.streamlitd/users.json
 examples/*/.streamlitd/auth_secret
+tests/load/loadapp
+tests/load/.dub/
+examples/*/business
+# the larger examples: binaries and their data files (seeded on first start)
+examples/helpdesk/helpdesk
+examples/planning/planning
+examples/todo/todo
+examples/gantt/gantt
+examples/monitor/monitor
+examples/*/data/*.json

@@ -78,6 +78,149 @@ st.json(df.toRecords(), expanded: false);
 
 ![dataframe](images/dataframe.png)
 
+## Column configuration, totals and colours
+
+`columnConfig:` (Streamlit's `column_config`) sets, per column, the header label, a tooltip,
+the display format, the width, pinned or hidden, and colours. `totals:` adds a row pinned at the
+bottom, and `cellStyle:` colours single cells (the job pandas' Styler does in Python). They work
+in `st.dataframe`, `st.table` and, for the editors, `st.dataEditor`.
+
+<!-- wrap -->
+```d
+alias C = ColumnConfig;
+auto df = new DataFrame()
+    .addColumn("region", ["North", "South"])
+    .addColumn("revenue", [12_500.5, 9_800.0])
+    .addColumn("share", [56.0, 44.0])
+    .addColumn("change", [13.6, -5.8])
+    .addColumn("target", [80, 65])
+    .addColumn("updated", ["2026-11-02", "2026-11-05"]);
+st.dataframe(df, hideIndex: true, columnConfig: [
+    "region":  C.text("Region", pinned: true),
+    "revenue": C.number("Revenue", format: "%,.0f", background: "heat", detailColumn: "share", group: "This month"),
+    "share":   C.number(format: "%.0f%% of total", hidden: true),   // shown under the revenue
+    "change":  C.number("Change", format: "%+.1f%%", color: "sign", help: "vs last month", group: "This month"),
+    "target":  C.progress("Target", min: 0, max: 100, format: "%d%%"),
+    "updated": C.date("Updated", format: "DD.MM.YYYY"),
+], totals: ["region": "Total", "revenue": "sum", "change": "mean"],
+   cellStyle: (size_t row, string col, Json v) => col == "change" && v.get!double < -5 ? "bg:error bold" : null);
+```
+
+**Column types** (`ColumnConfig.…`):
+
+| Type | Shows | Editor (`dataEditor`) |
+|---|---|---|
+| `text` | text | text field (`maxChars`, `required`) |
+| `number` | formatted number | number field (`min`, `max`, `step`) |
+| `date`, `datetime`, `time` | formatted date/time | date picker (`date`) |
+| `checkbox` | ✓ | checkbox |
+| `select(options)` | text | themed drop-down; `required: true` removes the empty choice |
+| `progress(min, max)` | a bar with the value | read-only |
+| `link(displayText)` | a link (opens in a new tab) | read-only |
+| `column(...)` | type from the data; only label, help, width, group | as the data type |
+| `hide()` | not shown | — |
+
+**Fields every type takes:**
+- `label`, `help` (a header tooltip);
+- `width` (`"small"`, `"medium"`, `"large"` or pixels);
+- `pinned` (stays at the left while scrolling sideways; pinned columns move to the front);
+- `hidden`, `disabled` (read-only in the editor);
+- `group` (adjacent columns with the same group share a header above them).
+
+**Formats** change only what is shown; sorting and totals use the values.
+- numbers: printf style (`"%d"`, `"%.1f"`, `"%+d"`, `"%,.0f"` with thousands separators,
+  `"%.1f%%"`, any text around it), or `"localized"`, `"plain"`, `"percent"` (×100),
+  `"compact"` (12.5K), `"dollar"`, `"euro"`, `"scientific"`;
+- dates and times: `"DD.MM.YYYY"`, `"MM.YYYY"`, `"YYYY-MM-DD HH:mm"`, `"D MMM YYYY"`, … or
+  `"localized"` (the viewer's language).
+
+**Colours** use the theme, so they are readable in every color scheme and in dark mode:
+- `color: "sign"` colours positive values green and negative values red (also the sums of tree
+  groups and the totals row);
+- `color:` and `background:` also take `"success"`, `"warning"`, `"error"`, `"info"`, `"muted"`,
+  `"primary"` or a hex colour;
+- `background: "heat"` shades from light to the theme's primary colour between the column's
+  smallest and largest value (or `min`/`max`);
+- `cellStyle` returns tokens for single cells: `"bg:success"`, `"text:error"`, `"bold"`,
+  `"italic"`, `"bg:#fff3cd"`, several separated by spaces, or null.
+
+**More:**
+- `totals:` takes `"sum"`, `"mean"`, `"min"`, `"max"`, `"count"`, or any other text (shown as
+  it is, e.g. `"Total"`). The totals row stays at the bottom while scrolling and sorting, and
+  is computed over the rows the search shows.
+- `maxHeight: 600` lets a table grow with its rows up to that height (`height:` is a fixed
+  height).
+- Header buttons sort (keyboard: Tab, Enter).
+- Column names in `columnConfig` and `totals` are checked: a typo is an error.
+
+## Selecting rows and cells
+
+With `onSelect: "rerun"` a table is a widget: clicking a row reruns the app and `dataframe`
+returns the selection (Streamlit's `on_select="rerun"`).
+
+<!-- wrap -->
+```d
+auto suppliers = new DataFrame()
+    .addColumn("name", ["ACME", "Globex", "Initech"])
+    .addColumn("debt", [1_200.0, 650.0, 980.0])
+    .addColumn("guid", ["s1", "s2", "s3"]);
+auto sel = st.dataframe(suppliers, onSelect: "rerun", rowKey: "guid", key: "suppliers",
+    columnConfig: ["guid": ColumnConfig.hide()]);
+if (!sel.empty)
+    st.write("Open supplier", sel.keys[0].get!string, "— row", sel.rows[0]);
+```
+
+| `selectionMode` | Selects | Returns |
+|---|---|---|
+| `"single-row"` (default) | one row; clicking it again clears it | `sel.rows`, `sel.keys` |
+| `"multi-row"` | rows with checkboxes (and a "select all"); Shift-click selects a range | `sel.rows`, `sel.keys` |
+| `"single-cell"` | one cell | `sel.cells[0].row`, `sel.cells[0].column` |
+
+- `sel.rows` are indices into the frame you passed, whatever the viewer's sorting and search.
+- `rowKey:` names a column whose values identify the rows, and fills `sel.keys`. The selection
+  then also survives the frame being filtered or reordered between runs, and follows the keys: when
+  selected rows leave the frame (deleted, filtered out), they leave the selection too, instead of
+  their row numbers selecting whatever rows came next. Without a `rowKey`, the selection is cleared
+  when the number of rows changes.
+- Keyboard: Tab into the table, ↑/↓/Home/End move, Space or Enter selects. In `single-cell`
+  mode, ←/→ move between cells.
+- The selected row keeps the focus after the rerun. A table with a `key` keeps its scroll position
+  across reruns (and a tree its open groups).
+- In tests, use `at.selectRows("suppliers", 1)` and `at.selectGroup(key, "Ann")` (see
+  [Testing](testing.md)).
+
+## Tree rows
+
+`groupBy:` turns a flat frame into a tree that opens and closes, with group values computed by
+`totals`:
+
+<!-- wrap -->
+```d
+auto brands = new DataFrame()
+    .addColumn("manager", ["Ann", "Ann", "Bob"])
+    .addColumn("supplier", ["ACME", "Globex", "Initech"])
+    .addColumn("brand", ["Rocket", "Gizmo", "Stapler"])
+    .addColumn("amount", [1_200.0, 980.0, 210.0]);
+auto pick = st.dataframe(brands, groupBy: ["manager", "supplier"], expanded: 1, onSelect: "rerun", key: "tree",
+    totals: ["brand": "Total", "amount": "sum"]);
+if (pick.group.length)
+    st.write("Group:", pick.group.join(" › "));    // e.g. ["Ann", "ACME"]
+```
+
+- The `groupBy` columns become the levels (they are not shown as columns). Group rows show their
+  name, the number of rows, and each column aggregated with its `totals` spec (`sum`, `mean`,
+  `min`, `max`, `count`). The `totals` row at the bottom is the grand total.
+- **Expanding:**
+  - `expanded: n` opens the first `n` levels at first;
+  - **Expand all** and **Collapse all** sit above the table;
+  - the open groups are remembered across reruns;
+  - while searching, groups with matching rows open.
+- Sorting orders groups by their aggregated values (or their names, for the first column), and
+  rows within their group.
+- With `onSelect: "rerun"`, clicking a group row selects it (`pick.group`); its triangle opens
+  it. Without `onSelect`, clicking a group row opens or closes it.
+- Keyboard: → opens a group (or moves into it), ← closes it (or moves to its parent).
+
 ## Editable tables: `st.dataEditor`
 
 <!-- wrap -->
@@ -90,11 +233,26 @@ auto edited = st.dataEditor(todo, numRows: "dynamic", disabled: ["task"], key: "
 st.write("Hours left:", edited.filter((Row r) => !r.get!bool("done")).sum("hours"));
 ```
 
-- `numRows: "dynamic"` lets users add and delete rows.
+- `numRows: "dynamic"` lets users add and delete rows. `maxRows:` caps the table's size: "+ Add
+  row" stops there, and the server ignores rows a client adds beyond it (set it whenever the rows
+  end up in a shared store).
 - `disabled:` lists read-only columns; `disabledAll: true` makes the whole table read-only.
 - Cell editors follow the column type: checkbox for booleans, number input for numbers, date
-  input for dates.
+  picker for dates.
+- `columnConfig:` chooses editors and rules: `ColumnConfig.select(options)`,
+  `number(min:, max:, step:)`, `text(maxChars:, required: true)`, `disabled: true`. Values a
+  column does not allow are rejected in the browser and dropped on the server too.
 - The return value is the **edited** frame. The original is not modified.
+
+<!-- wrap -->
+```d
+auto edited = st.dataEditor(new DataFrame()
+        .addColumn("task", ["Write code"]).addColumn("hours", [3]).addColumn("priority", ["high"]),
+    numRows: "dynamic", key: "plan", columnConfig: [
+        "hours": ColumnConfig.number("Hours", min: 0, max: 24),
+        "priority": ColumnConfig.select("Priority", ["high", "normal", "low"], required: true),
+    ]);
+```
 
 ![data editor](images/data-editor.png)
 
@@ -122,7 +280,9 @@ st.lineChart(df, x: "day", y: ["sales"], color: "#ff4b4b", height: 200, xLabel: 
 - Without `x`, the row index is used.
 - Without `y`, every numeric column except `x` is used.
 - `color` is either a column name (a series per value) or a fixed `#hex` color.
-- Date columns become time axes.
+- `stack: false` puts the bars of several series side by side (areas overlap).
+- Date and time columns become time axes, shown in the viewer's time zone; times within one day get
+  clock labels (`14:05:30`), e.g. for a live chart of the last minutes.
 - Line and scatter charts support zoom and pan with the mouse wheel and drag.
 
 ![charts](images/charts.png)
@@ -214,6 +374,19 @@ foreach (f; st.fileUploaderMulti("Images", ["png", "jpg"]))
     st.image(f.bytes, caption: f.name);
 
 st.downloadButton("Download report", "a,b\n1,2\n", "report.csv", "text/csv");
+
+// built only when clicked, not on every run (e.g. a large Excel export)
+DataFrame buildReport() { return new DataFrame().addColumn("a", [1, 2]); }
+st.downloadButton("Export", () => buildReport().toCsv(), "report.csv", "text/csv");
 ```
+
+With a function instead of data, the file is built when the viewer clicks, on a thread of its own,
+so a slow export neither slows down every run nor holds up other users. The link works while the
+button is on the page; it does not rerun the app.
+
+**Text people typed, opened in Excel.** A cell such as `=HYPERLINK("http://…")` runs as a formula
+when the CSV is opened in a spreadsheet ("CSV injection"). `toCsv(',', true)` puts a `'` before
+text that starts with `=`, `+`, `-`, `@`, Tab or CR (numbers stay as they are). Use it for exports
+of data that users typed: ticket titles, names, comments.
 
 The upload limit is set by `--max-upload-mb` or `[server] maxUploadSize` (default 200 MB).

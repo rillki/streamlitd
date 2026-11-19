@@ -67,6 +67,8 @@
   // ------------------------------------------------------------------ markdown
   const COLOR_RE = /:(red|blue|green|orange|violet|gray|grey|rainbow|primary)\[([^\]]*)\]/g;
   const BG_RE = /:(red|blue|green)-background\[([^\]]*)\]/g;
+  // :blue-badge[text]: a small label inline (like st.badge)
+  const BADGE_RE = /:(red|blue|green|orange|violet|gray|grey|primary)-badge\[([^\]]*)\]/g;
   function markedOpts(allowHtml) {
     return {
       gfm: true, breaks: false, async: false,
@@ -76,7 +78,8 @@
     };
   }
   function postMd(html) {
-    return html.replace(BG_RE, '<span class="st-bg-$1">$2</span>').replace(COLOR_RE, '<span class="st-color-$1">$2</span>');
+    return html.replace(BADGE_RE, '<span class="badge badge-$1">$2</span>').replace(BG_RE, '<span class="st-bg-$1">$2</span>')
+      .replace(COLOR_RE, '<span class="st-color-$1">$2</span>');
   }
   // marked does not sanitize URLs: neutralise script-capable schemes unless HTML is explicitly allowed
   const BAD_URL_RE = /(href|src)\s*=\s*"\s*(?:javascript|vbscript|data:text\/html)[^"]*"/gi;
@@ -160,10 +163,17 @@
   }
 
   function sendRerun(updates, trigger, triggerValue, fragment) {
-    const m = { type: "rerun", updates: updates || {}, page: S.page, query: queryObj() };
+    const m = { type: "rerun", updates: updates || {}, page: S.page, query: queryObj(), client: clientInfo() };
     if (trigger) { m.trigger = trigger; m.triggerValue = triggerValue === undefined ? true : triggerValue; }
     if (fragment) m.fragment = fragment;
     send(m);
+  }
+
+  // st.context: what only the browser knows
+  function clientInfo() {
+    let tz = null;
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch (e) {}
+    return { locale: navigator.language || null, timezone: tz, timezoneOffset: -new Date().getTimezoneOffset(), url: location.href };
   }
 
   // A widget changed its value (widgets inside st.fragment rerun only their fragment).
@@ -188,6 +198,13 @@
     f.values = {};
     // pick up values of focused text inputs that have not been committed yet
     sendRerun(updates, sid, true, f.fragment);
+    // clearOnSubmit: inputs don't take new values while focused, so step out of the focused one
+    // until the run is over (then the cleared value is in, and typing can go on)
+    const a = document.activeElement;
+    if (f.clearOnSubmit && f.dom && a && f.dom.contains(a) && a.blur) {
+      S.refocus = a;
+      a.blur();
+    }
   }
 
   // ------------------------------------------------------------------ messages
@@ -306,6 +323,13 @@
   }
 
   function onScriptFinished(status, msg) {
+    // back into the input a clearOnSubmit form left (once the last run is over)
+    if (S.refocus && status !== "rerun") {
+      const r = S.refocus;
+      S.refocus = null;
+      const free = !document.activeElement || document.activeElement === document.body;
+      if (document.contains(r) && free) { try { r.focus(); } catch (e) {} }
+    }
     clearTimeout(S.staleTimer);
     setRunning(false);
     if (status !== "rerun") {
@@ -520,9 +544,25 @@
       draw(el);
       const body = h("div", { class: "block-vertical card-body" });
       d.append(head, body);
+      // link: the whole card opens a page; buttons and links in it still work (they sit above it)
+      const setLink = (e) => {
+        const old = d.querySelector(":scope > .card-link");
+        if (old) old.remove();
+        d.classList.toggle("linked", !!e.link);
+        if (!e.link) return;
+        const ext = /^https?:/i.test(e.link);
+        const a = h("a", { class: "card-link", href: ext ? e.link : BASE + e.link.replace(/^\//, ""), "aria-label": e.title || e.link, "data-testid": "st-card-link" });
+        if (!ext) a.addEventListener("click", (ev) => {
+          if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1) return;
+          ev.preventDefault();
+          goToPage(e.link.replace(/^\//, ""));
+        });
+        d.prepend(a);
+      };
+      setLink(el);
       node.wrap.appendChild(d);
       node.inner = body;
-      node.update = draw;
+      node.update = (e) => { draw(e); setLink(e); };
     },
     vertical(node, el) {
       const d = h("div", { class: "block-vertical" + (el.border ? " bordered" : "") + (el.height ? " scroll" : "") });
@@ -616,6 +656,8 @@
       if (!S.forms[el.formId]) S.forms[el.formId] = { values: {}, submitId: null };
       S.forms[el.formId].fragment = el.fragment || null;
       S.forms[el.formId].enterToSubmit = el.enterToSubmit !== false;
+      S.forms[el.formId].clearOnSubmit = !!el.clearOnSubmit;
+      S.forms[el.formId].dom = d;
     },
     fragment(node, el) {
       const d = h("div", { class: "block-vertical fragment", "data-testid": "st-fragment" });
@@ -624,15 +666,30 @@
     },
     dialog(node, el) {
       const overlay = h("div", { class: "dialog-overlay", "data-testid": "st-dialog" });
+      S.dialogs = S.dialogs || [];
+      S.dialogs.push(overlay);
+      const forget = () => { S.dialogs = S.dialogs.filter((d) => d !== overlay); overlay.remove(); };
       const box = h("div", { class: "dialog-box " + (el.width === "large" ? "large" : "small"), role: "dialog", "aria-modal": "true", "aria-label": el.title || "" });
       const head = h("div", { class: "dialog-head" }, h("h3", { html: mdInline(el.title || "") }));
       const close = () => {
         document.removeEventListener("keydown", onKey);
+        forget();
         const p = node.parent;
+        const dismissId = node.el && node.el.dismissId;
         resetNode(node);
         if (p) node.el = { kind: "empty" };
+        const top = S.dialogs[S.dialogs.length - 1];
+        if (top) { const f = top.querySelector("button, [href], input, [tabindex]"); if (f) f.focus(); }
+        // st.dialog(onDismiss:): tell the app, which reruns (and calls the callback first)
+        if (dismissId) sendRerun({}, dismissId, true, null);
       };
-      const onKey = (ev) => { if (ev.key === "Escape" && el.dismissible !== false) close(); };
+      // Esc closes only the dialog on top (a nested one first)
+      const onKey = (ev) => {
+        if (ev.key !== "Escape" || el.dismissible === false || ev.defaultPrevented) return;
+        if (S.dialogs[S.dialogs.length - 1] !== overlay) return;
+        ev.preventDefault();
+        close();
+      };
       if (el.dismissible !== false) {
         const x = h("button", { type: "button", class: "icon-btn", "aria-label": "Close", text: "\u00D7" });
         x.addEventListener("click", close);
@@ -643,9 +700,11 @@
       const inner = h("div", { class: "block-vertical" });
       box.append(head, inner);
       overlay.appendChild(box);
-      node.wrap.appendChild(overlay);
+      // every overlay lives in the dialog layer (a nested one would otherwise sit inside its
+      // parent's box, which may clip or contain it); the node keeps the content
+      $("#stRoot-3").appendChild(overlay);
       node.inner = inner;
-      node.destroy = () => document.removeEventListener("keydown", onKey);
+      node.destroy = () => { document.removeEventListener("keydown", onKey); forget(); };
       node.update = (e) => { head.firstChild.innerHTML = mdInline(e.title || ""); };
     },
     status(node, el) {
@@ -692,6 +751,43 @@
       el.appendChild(img);
     } else el.textContent = initials;
     return el;
+  }
+
+  // colours of legends and proportion bars: a token, a hex colour, or the chart palette
+  const SWATCH_TOKENS = { success: "var(--ink-success)", warning: "var(--ink-warning)", error: "var(--ink-error)", info: "var(--ink-info)",
+    muted: "var(--text-muted)", primary: "var(--primary)" };
+  function swatchColor(c, i) {
+    if (c && SWATCH_TOKENS[c]) return SWATCH_TOKENS[c];
+    if (c && /^#[0-9a-fA-F]{3,8}$/.test(c)) return c;
+    return "var(--chart-" + ((i % 10) + 1) + ", var(--primary))";
+  }
+  function legendMark(shape, color) {
+    const m = h("span", { class: "lg-mark lg-" + shape, "aria-hidden": "true" });
+    m.style.setProperty("--lg-color", color); // custom properties need setProperty
+    return m;
+  }
+  // a small trend chart for st.metric(chartData:)
+  function sparkline(data, type) {
+    const w = 120, hgt = 32, n = data.length;
+    const lo = Math.min(...data), hi = Math.max(...data), span = hi - lo || 1;
+    const x = (i) => (i / (n - 1)) * w, y = (v) => hgt - 2 - ((v - lo) / span) * (hgt - 4);
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 " + w + " " + hgt);
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.setAttribute("class", "metric-chart");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "Trend from " + data[0] + " to " + data[n - 1]);
+    const el = (name, attrs) => { const e = document.createElementNS(ns, name); for (const k in attrs) e.setAttribute(k, attrs[k]); svg.appendChild(e); return e; };
+    if (type === "bar") {
+      const bw = w / n;
+      data.forEach((v, i) => el("rect", { x: i * bw + bw * 0.15, y: y(v), width: bw * 0.7, height: hgt - y(v), class: "spark-bar" }));
+    } else {
+      const pts = data.map((v, i) => x(i).toFixed(1) + "," + y(v).toFixed(1)).join(" ");
+      if (type === "area") el("polygon", { points: "0," + hgt + " " + pts + " " + w + "," + hgt, class: "spark-area" });
+      el("polyline", { points: pts, class: "spark-line", "vector-effect": "non-scaling-stroke" });
+    }
+    return svg;
   }
 
   // Vega re-measures "container"-width charts only on a window resize event, so a chart whose
@@ -924,7 +1020,61 @@
         if (el.deltaColor === "off") cls = "delta-off";
         d.appendChild(h("div", { class: "metric-delta " + cls, text: (neg ? "↓ " : "↑ ") + s.replace(/^[-+]/, "") }));
       }
+      if (el.caption) d.appendChild(h("div", { class: "metric-caption", html: mdInline(el.caption) }));
+      if (el.chartData && el.chartData.length > 1) d.appendChild(sparkline(el.chartData, el.chartType || "line"));
       node.wrap.appendChild(d);
+    },
+
+    // st.emptyState: "nothing here yet"
+    empty_state(node, el) {
+      node.wrap.appendChild(h("div", { class: "st-empty", role: "status", "data-testid": "st-empty-state" },
+        el.icon ? h("div", { class: "st-empty-icon", "aria-hidden": "true", text: el.icon }) : null,
+        h("div", { class: "st-empty-title", html: mdInline(el.title || "") }),
+        el.body ? mdEl(el.body, "st-empty-body") : null));
+    },
+
+    // st.legend: swatches with labels
+    legend(node, el) {
+      const ul = h("ul", { class: "st-legend", "data-testid": "st-legend", "aria-label": el.title || "Legend" });
+      (el.items || []).forEach((it, i) => {
+        ul.appendChild(h("li", null, legendMark(it.shape || "square", swatchColor(it.color, i)), h("span", { text: it.label })));
+      });
+      node.wrap.appendChild(el.title ? h("div", { class: "st-legend-wrap" }, h("div", { class: "st-legend-title", text: el.title }), ul) : ul);
+    },
+
+    // st.proportionBar: a bar split by share, with a legend that carries the numbers
+    proportion_bar(node, el) {
+      const vals = el.values || [], total = vals.reduce((s, v) => s + v, 0);
+      const fmt = (v) => (el.format ? StTable.formatNumber(v, el.format) : String(+v.toFixed(2)));
+      const pct = (v) => (total > 0 ? (v / total) * 100 : 0);
+      const bar = h("div", { class: "pb-bar", "aria-hidden": "true" });
+      const legend = h("ul", { class: "st-legend pb-legend" });
+      vals.forEach((v, i) => {
+        const color = swatchColor((el.colors || [])[i], i);
+        if (v > 0) bar.appendChild(h("span", { style: { width: pct(v) + "%", background: color }, title: el.labels[i] + ": " + fmt(v) }));
+        legend.appendChild(h("li", null, legendMark("square", color),
+          h("span", { text: el.labels[i] + " " }), h("span", { class: "pb-value", text: fmt(v) + " · " + Math.round(pct(v)) + "%" })));
+      });
+      node.wrap.appendChild(h("div", { class: "st-proportion", "data-testid": "st-proportion-bar" }, bar, legend));
+    },
+
+    // st.feed: notifications and alerts
+    feed(node, el) {
+      const icons = { success: "✅", info: "ℹ️", warning: "⚠️", error: "⛔" };
+      const ul = h("ul", { class: "st-feed", "data-testid": "st-feed" });
+      for (const it of el.items || []) {
+        ul.appendChild(h("li", { class: "feed-item" + (it.type ? " feed-" + it.type : "") + (it.unread ? " unread" : "") },
+          h("span", { class: "feed-icon", "aria-hidden": "true", text: it.icon || icons[it.type] || "•" }),
+          h("div", { class: "feed-main" },
+            h("div", { class: "feed-head" },
+              it.unread ? h("span", { class: "feed-dot", title: "Unread", "aria-hidden": "true" }) : null,
+              it.unread ? h("span", { class: "sr-only", text: "Unread: " }) : null,
+              h("span", { class: "feed-title", html: mdInline(it.title || "") }),
+              it.time ? h("span", { class: "feed-time", text: it.time }) : null),
+            it.body ? mdEl(it.body, "feed-body") : null,
+            (it.badges || []).length ? h("div", { class: "feed-badges" }, ...(it.badges || []).map((b) => h("span", { class: "badge badge-gray", text: b }))) : null)));
+      }
+      node.wrap.appendChild(ul);
     },
 
     json(node, el) {
@@ -1097,7 +1247,8 @@
     download_button(node, el) {
       const box = widgetBox(node, el);
       const a = h("a", { class: btnClass(el), href: el.url, download: el.fileName || "", title: el.help || null, role: "button" }, btnContent(el));
-      a.addEventListener("click", () => { setTimeout(() => triggerWidget(el), 50); });
+      // a file built on click (lazy) does not rerun the app
+      if (!el.lazy) a.addEventListener("click", () => { setTimeout(() => triggerWidget(el), 50); });
       box.appendChild(a);
       node.update = () => {};
     },
@@ -1412,7 +1563,7 @@
 
     // st.details: labels and values of one record
     details(node, el) {
-      const dl = h("dl", { class: "st-details", "data-testid": "st-details" });
+      const dl = h("dl", { class: "st-details" + (el.inline ? " inline" : ""), "data-testid": "st-details" });
       for (const [k, v] of el.rows || []) dl.append(h("dt", { html: mdInline(k) }), h("dd", { html: mdInline(v) }));
       node.wrap.appendChild(dl);
     },
@@ -1500,25 +1651,12 @@
     },
 
     // ------------------------------------------------------------ data
-    dataframe(node, el) { renderDataframe(node, el, false); },
-    data_editor(node, el) { renderDataframe(node, el, true); },
-    table(node, el) {
-      const cols = el.columns || [];
-      const t = h("table", { class: "static", "data-testid": "st-table" });
-      const hr = h("tr");
-      if (!el.hideIndex) hr.appendChild(h("th", { text: "" }));
-      cols.forEach((c) => hr.appendChild(h("th", { class: isNumCol(c) ? "num" : null, text: c.name })));
-      t.appendChild(h("thead", null, hr));
-      const tb = h("tbody");
-      (el.data || []).forEach((row, ri) => {
-        const tr = h("tr");
-        if (!el.hideIndex) tr.appendChild(h("th", { text: String(ri) }));
-        row.forEach((v, ci) => tr.appendChild(h("td", { class: isNumCol(cols[ci]) ? "num" : null, text: fmtCell(v, cols[ci]) })));
-        tb.appendChild(tr);
-      });
-      t.appendChild(tb);
-      node.wrap.appendChild(h("div", { style: { overflowX: "auto" } }, t));
-    },
+    // tables: assets/table.js
+    dataframe(node, el) { StTable.render(node, el, "dataframe", tableApi); },
+    data_editor(node, el) { StTable.render(node, el, "editor", tableApi); },
+    table(node, el) { StTable.render(node, el, "table", tableApi); },
+    // st.calendarGrid: assets/calendar.js
+    calendar_grid(node, el) { StCalendar.render(node, el, tableApi); },
 
     pills(node, el) { choiceGroup(node, el, "pills"); },
     segmented_control(node, el) { choiceGroup(node, el, "segmented"); },
@@ -1680,6 +1818,7 @@
           draw();
           widgetChanged(el, value.slice());
         } else {
+          if (el.required && value === i) return; // required: the selected option stays selected
           value = value === i ? null : i;
           draw();
           widgetChanged(el, value);
@@ -1734,159 +1873,7 @@
   }
 
   // ------------------------------------------------------------------ dataframe
-  function isNumCol(c) { return c && (c.type === "integer" || c.type === "number"); }
-  function fmtCell(v, col) {
-    if (v === null || v === undefined) return "None";
-    if (typeof v === "number") {
-      if (col && col.type === "number" && !Number.isInteger(v)) {
-        const a = Math.abs(v);
-        return a !== 0 && (a < 1e-4 || a >= 1e15) ? v.toExponential(4) : String(+v.toFixed(4));
-      }
-      return String(v);
-    }
-    if (typeof v === "boolean") return v ? "true" : "false";
-    if (typeof v === "object") return JSON.stringify(v);
-    return String(v);
-  }
-  function cmpCells(a, b) {
-    const an = a === null || a === undefined, bn = b === null || b === undefined;
-    if (an || bn) return an === bn ? 0 : an ? 1 : -1;
-    if (typeof a === "number" && typeof b === "number") return a - b;
-    return String(a).localeCompare(String(b));
-  }
-
-  function renderDataframe(node, el, editable) {
-    const cols = el.columns || [];
-    const data = el.data || [];
-    const container = h("div", { class: "df-container", "data-testid": editable ? "st-data-editor" : "st-dataframe" });
-    const toolbar = h("div", { class: "df-toolbar" });
-    const wrap = h("div", { class: "df-wrap" });
-    if (el.height > 0) wrap.style.maxHeight = el.height + "px";
-    container.append(toolbar, wrap);
-    node.wrap.appendChild(container);
-
-    let sortCol = -1, sortDir = 1, filter = "";
-    const state = editable ? JSON.parse(JSON.stringify(el.value || {})) : null;
-    if (state) { state.edited = state.edited || {}; state.added = state.added || []; state.deleted = state.deleted || []; }
-    const selected = new Set();
-    const disabledCols = new Set(el.disabledCols || []);
-
-    if (!editable) {
-      const search = h("input", { type: "search", placeholder: "Search", "aria-label": "Search table" });
-      search.addEventListener("input", () => { filter = search.value.toLowerCase(); draw(); });
-      const dl = h("button", { type: "button", text: "⬇ CSV", title: "Download as CSV" });
-      dl.addEventListener("click", () => downloadCsv(cols, data));
-      toolbar.append(search, dl);
-    }
-
-    const commit = () => widgetChanged(el, JSON.parse(JSON.stringify(state)));
-    const setCell = (ri, col, v) => {
-      const src = el.rowMap[ri];
-      if (src >= 0) {
-        state.edited[src] = state.edited[src] || {};
-        state.edited[src][col.name] = v;
-      } else {
-        const k = -src - 1;
-        state.added[k] = state.added[k] || {};
-        state.added[k][col.name] = v;
-      }
-      commit();
-    };
-
-    const draw = () => {
-      let rows = data.map((r, i) => i);
-      if (filter) rows = rows.filter((i) => data[i].some((v) => fmtCell(v).toLowerCase().includes(filter)));
-      if (sortCol >= 0) rows.sort((a, b) => sortDir * cmpCells(data[a][sortCol], data[b][sortCol]));
-      const t = h("table", { class: "df" });
-      const hr = h("tr");
-      if (editable && el.numRows === "dynamic") hr.appendChild(h("th", { class: "rowsel idx", text: "" }));
-      if (!el.hideIndex) hr.appendChild(h("th", { class: "idx", text: "" }));
-      cols.forEach((c, ci) => {
-        const th = h("th", { class: (isNumCol(c) ? "num " : "") + (ci === sortCol ? (sortDir > 0 ? "sorted-asc" : "sorted-desc") : ""), text: c.name, title: c.name + " (" + c.type + ")" });
-        th.addEventListener("click", () => {
-          if (sortCol === ci) { if (sortDir > 0) sortDir = -1; else { sortCol = -1; sortDir = 1; } }
-          else { sortCol = ci; sortDir = 1; }
-          draw();
-        });
-        hr.appendChild(th);
-      });
-      t.appendChild(h("thead", null, hr));
-      const tb = h("tbody");
-      for (const ri of rows) {
-        const row = data[ri];
-        const tr = h("tr", { class: editable && el.rowMap && el.rowMap[ri] < 0 ? "added" : null });
-        if (editable && el.numRows === "dynamic") {
-          const cb = h("input", { type: "checkbox", "aria-label": "Select row " + ri });
-          cb.checked = selected.has(ri);
-          cb.addEventListener("change", () => { if (cb.checked) selected.add(ri); else selected.delete(ri); delBtn.disabled = selected.size === 0; });
-          tr.appendChild(h("td", { class: "rowsel idx" }, cb));
-        }
-        if (!el.hideIndex) tr.appendChild(h("td", { class: "idx", text: String(ri) }));
-        row.forEach((v, ci) => {
-          const col = cols[ci];
-          if (editable && !el.disabled && !disabledCols.has(col.name)) {
-            const td = h("td", { class: "edit" + (isNumCol(col) ? " num" : "") });
-            let inp;
-            if (col.type === "boolean") {
-              inp = h("input", { type: "checkbox" });
-              inp.checked = !!v;
-              inp.addEventListener("change", () => setCell(ri, col, inp.checked));
-            } else {
-              inp = h("input", { type: isNumCol(col) ? "number" : col.type === "date" ? "date" : "text", step: col.type === "number" ? "any" : null });
-              inp.value = v === null || v === undefined ? "" : (typeof v === "object" ? JSON.stringify(v) : String(v));
-              const orig = inp.value;
-              inp.addEventListener("change", () => {
-                if (inp.value === orig) return;
-                let nv = inp.value;
-                if (isNumCol(col)) nv = nv === "" ? null : Number(nv);
-                setCell(ri, col, nv);
-              });
-              inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") inp.blur(); });
-            }
-            inp.setAttribute("aria-label", col.name + " row " + ri);
-            td.appendChild(inp);
-            tr.appendChild(td);
-          } else {
-            tr.appendChild(h("td", { class: (isNumCol(col) ? "num" : "") + (v === null || v === undefined ? " null" : ""), text: fmtCell(v, col), title: fmtCell(v, col) }));
-          }
-        });
-        tb.appendChild(tr);
-      }
-      t.appendChild(tb);
-      wrap.innerHTML = "";
-      wrap.appendChild(t);
-    };
-
-    let delBtn = null;
-    if (editable && el.numRows === "dynamic" && !el.disabled) {
-      const add = h("button", { type: "button", class: "st-btn", text: "+ Add row" });
-      delBtn = h("button", { type: "button", class: "st-btn", text: "Delete selected", disabled: true });
-      add.addEventListener("click", () => { state.added.push({}); commit(); });
-      delBtn.addEventListener("click", () => {
-        const addedIdx = [];
-        selected.forEach((ri) => {
-          const src = el.rowMap[ri];
-          if (src >= 0) state.deleted.push(src); else addedIdx.push(-src - 1);
-        });
-        addedIdx.sort((a, b) => b - a).forEach((k) => state.added.splice(k, 1));
-        selected.clear();
-        commit();
-      });
-      container.appendChild(h("div", { class: "editor-actions" }, add, delBtn));
-    }
-    draw();
-  }
-
-  function downloadCsv(cols, data) {
-    const q = (s) => (/[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
-    const lines = [cols.map((c) => q(c.name)).join(",")];
-    data.forEach((r) => lines.push(r.map((v) => q(v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v))).join(",")));
-    const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
-    const a = h("a", { href: URL.createObjectURL(blob), download: "data.csv" });
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-  }
+  const tableApi = { h, widgetChanged: (el, v) => widgetChanged(el, v), triggerWidget: (el, v) => triggerWidget(el, v), StUI };
 
   // ------------------------------------------------------------------ vega
   function loadScript(src) {
@@ -2101,7 +2088,9 @@
     set("--primary", t.primaryColor);
     set("--primary-strong", strong);
     set("--primary-ink", primaryInk);
-    set("--primary-hover", strong && "color-mix(in srgb, " + strong + " 85%, " + (dark ? "white" : "black") + ")");
+    // hover moves away from the text color on it (darker under white text), so contrast only grows
+    const onLight = onRgb && relLum(onRgb) > 0.5;
+    set("--primary-hover", strong && "color-mix(in srgb, " + strong + " 85%, " + (onLight ? "black" : "white") + ")");
     set("--on-primary", onPrimary);
     set("--bg", t.backgroundColor);
     set("--bg2", t.secondaryBackgroundColor);
@@ -2338,7 +2327,8 @@
   }
   function navLink(p, current, cls, testid) {
     const a = h("a", { href: BASE + p.urlPath, class: (cls || "") + (p.urlPath === current ? " active" : ""), "data-testid": testid,
-      "aria-current": p.urlPath === current ? "page" : null }, p.icon ? h("span", { text: p.icon, "aria-hidden": "true" }) : null, h("span", { text: p.title }));
+      "aria-current": p.urlPath === current ? "page" : null }, p.icon ? h("span", { text: p.icon, "aria-hidden": "true" }) : null, h("span", { text: p.title }),
+      p.badge ? h("span", { class: "nav-badge", text: p.badge }) : null);
     a.addEventListener("click", (ev) => {
       if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1) return; // open in a new tab
       ev.preventDefault();
@@ -2346,7 +2336,7 @@
     });
     return a;
   }
-  const navMenuItem = (p, current) => ({ label: p.title, icon: p.icon || null, href: BASE + p.urlPath, value: p.urlPath, current: p.urlPath === current });
+  const navMenuItem = (p, current) => ({ label: p.title, icon: p.icon || null, href: BASE + p.urlPath, value: p.urlPath, current: p.urlPath === current, hint: p.badge || null });
 
   function renderNav(m) {
     S.navSeen = true;
@@ -2361,7 +2351,30 @@
     S.topNav = m.position === "top";
     const groups = navGroups(pages);
     if (S.navVisible) {
+      S.navOpen = S.navOpen || {};
       for (const g of groups) {
+        if (g.section && m.sections === "collapsible") {
+          // a section that folds; the current page's section is open
+          const current = g.pages.some((p) => p.urlPath === m.current);
+          const open = current || !!S.navOpen[g.section];
+          const list = h("div", { class: "nav-sub", id: "nav-sub-" + g.section.replace(/\W+/g, "-"), hidden: !open });
+          const total = g.pages.map((p) => +p.badge).filter((n) => n > 0).reduce((a, b) => a + b, 0);
+          const btn = h("button", { type: "button", class: "nav-section nav-fold" + (current ? " current" : ""), "data-testid": "st-nav-section",
+            "aria-expanded": String(open), "aria-controls": list.id },
+            h("span", { class: "nav-fold-caret", "aria-hidden": "true", text: "▸" }), h("span", { text: g.section }),
+            !open && total > 0 ? h("span", { class: "nav-badge", text: String(total) }) : null);
+          btn.addEventListener("click", () => {
+            const nowOpen = list.hidden;
+            list.hidden = !nowOpen;
+            S.navOpen[g.section] = nowOpen;
+            btn.setAttribute("aria-expanded", String(nowOpen));
+            const b = btn.querySelector(".nav-badge");
+            if (b) b.hidden = nowOpen;
+          });
+          for (const p of g.pages) list.appendChild(navLink(p, m.current, "", "st-nav-link"));
+          nav.append(btn, list);
+          continue;
+        }
         if (g.section) nav.appendChild(h("div", { class: "nav-section", "data-testid": "st-nav-section", text: g.section }));
         for (const p of g.pages) nav.appendChild(navLink(p, m.current, "", "st-nav-link"));
       }

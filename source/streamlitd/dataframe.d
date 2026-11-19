@@ -538,10 +538,23 @@ final class DataFrame
 	}
 
 	/// CSV text.
-	string toCsv(char separator = ',')
+	///
+	/// `safe`: text cells that a spreadsheet would run as a formula (starting with `=`, `+`, `-`,
+	/// `@`, Tab or CR, and not a number) get a leading `'`. Use it for files people open in Excel
+	/// when the data holds text users typed ("CSV injection").
+	string toCsv(char separator = ',', bool safe = false)
 	{
 		string esc(string s)
 		{
+			static bool number(string t)
+			{
+				import std.conv : to;
+				try { t.to!double; return true; }
+				catch (Exception) return false;
+			}
+			if (safe && s.length && (s[0] == '=' || s[0] == '+' || s[0] == '-' || s[0] == '@' || s[0] == '\t'
+				|| s[0] == '\r') && !number(s))
+				s = "'" ~ s;
 			if (s.canFind(separator) || s.canFind('"') || s.canFind('\n'))
 				return `"` ~ s.replace(`"`, `""`) ~ `"`;
 			return s;
@@ -662,6 +675,10 @@ unittest
 	assert(c.typeOf("day") == ColumnType.date);
 	assert(c.cell(1, "score").type == Json.Type.null_);
 	assert(c.toCsv().startsWith("name,age,score,ok,day\n"));
+	// safe: formulas are defused, numbers stay numbers
+	auto f = new DataFrame().addColumn("v", ["=HYPERLINK(\"x\")", "-5", "+cmd", "@SUM(A1)", "ok", "-1.5e3"]);
+	assert(f.toCsv(',', true) == "v\n\"'=HYPERLINK(\"\"x\"\")\"\n-5\n'+cmd\n'@SUM(A1)\nok\n-1.5e3\n", f.toCsv(',', true));
+	assert(f.toCsv().canFind("\n+cmd\n"));
 
 	auto o = DataFrame.fromJson(parseJsonString(`[{"z":1,"a":2,"m":3}]`), ["m"]);
 	assert(o.columns == ["m", "a", "z"]);

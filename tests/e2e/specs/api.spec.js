@@ -64,7 +64,7 @@ test("API routes follow [auth] required and requireUser", async ({ page, request
   expect(await anon.json()).toEqual({ statusMessage: "login required" });
   await page.goto(url("auth", "/"));
   await page.getByLabel("Username").fill("alice");
-  await page.getByLabel("Password").fill("secret123");
+  await page.getByLabel("Password").fill("streamlitd-demo");
   await page.getByRole("button", { name: "Sign in" }).click();
   await waitIdle(page, 1);
   const me = await page.request.get(url("auth", "/api/whoami"));

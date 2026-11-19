@@ -459,7 +459,8 @@ void applyEnv(ref ServerOptions o, string[string] env)
 			cfg["api"][k] = *v;
 		}
 	applyConfig(o, cfg);
-	static immutable authKeys = ["required", "registration", "users_file", "cookie_secret", "password_min_length", "require_email"];
+	static immutable authKeys = ["required", "registration", "users_file", "cookie_secret", "password_min_length", "require_email",
+		"signups_per_hour"];
 	foreach (k; authKeys)
 		if (auto v = ("STREAMLITD_AUTH_" ~ k.toUpper) in env)
 		{

@@ -107,14 +107,36 @@ mixin template FragmentElements()
 	/// `st.dialog`: shows a modal dialog. Its widgets rerun only the dialog. The dialog stays
 	/// open while it reruns and closes on the next full rerun in which it is not opened again
 	/// (e.g. after `st.rerun()`), or when the user dismisses it.
+	/// Called while a dialog's body runs, it opens a dialog on top of that one (streamlitd only):
+	/// Esc and × close the top one, and the one below keeps its state.
+	///
+	/// A dialog opened because of a session value (`if (st.session.get!bool("editing")) st.dialog(...)`)
+	/// would open again on the next full rerun after the user closed it. `onDismiss` fixes that:
+	/// closing it with ×, Esc or a click outside reruns the app and calls `onDismiss` first, e.g.
+	/// `onDismiss: { st.session.remove("editing"); }`.
 	void dialog(string title, void delegate(St) body_, string width = "small", bool dismissible = true,
-		string key = null)
+		string key = null, void delegate() onDismiss = null)
 	{
-		auto overlay = new St(sess, [3]);
-		auto blk = overlay.emitBlock("dialog", jo("title", title, "width", width, "dismissible", dismissible));
+		// nested: inside the innermost dialog whose body is running; otherwise the dialog layer
+		auto parent = sess.dialogStack.length ? sess.dialogStack[$ - 1] : new St(sess, [3]);
 		auto fid = "d:" ~ (key.length ? key : title);
+		auto props = jo("title", title, "width", width, "dismissible", dismissible);
+		if (onDismiss !is null && dismissible)
+		{
+			// a trigger without an element of its own: the browser sends it when the dialog is closed
+			auto did = fid ~ ":dismiss";
+			WidgetMeta m;
+			m.onChange = onDismiss;
+			m.trigger = true;
+			sess.newWidgetMeta[did] = m;
+			sess.seenIds[did] = true;
+			props["dismissId"] = did;
+		}
+		auto blk = parent.emitBlock("dialog", props);
 		sess.registerFragment(fid, body_, blk.path.dup, null, 0);
 		blk.fragmentId = fid;
+		sess.dialogStack ~= blk;
+		scope (exit) sess.dialogStack = sess.dialogStack[0 .. $ - 1];
 		body_(blk);
 	}
 

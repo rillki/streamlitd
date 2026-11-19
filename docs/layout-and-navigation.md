@@ -111,6 +111,57 @@ if (st.button("Edit profile"))
 - A dialog stays open while its own widgets are used, and closes on the next full rerun in which
   it isn't opened again.
 
+**Dialogs opened from session state.** A dialog that should stay open across full reruns (an
+editor opened by a click in a table, say) is drawn while a session value is set. Closing it with ×
+or Esc happens in the browser only, so pass `onDismiss`: closing it then reruns the app and calls
+the callback first, which clears the value. Without it, the next full rerun would open the dialog
+again:
+
+<!-- wrap -->
+```d
+if (st.button("Edit"))
+    st.session["editing"] = true;
+if (st.session.get!bool("editing", false))
+    st.dialog("Edit task", (St d) {
+        auto title = d.textInput("Title");
+        if (d.button("Save", type: "primary"))
+        {
+            st.session["editing"] = false;
+            st.rerun();
+        }
+    }, onDismiss: { st.session["editing"] = false; });
+```
+
+**A dialog from a dialog (streamlitd only).** `st.dialog` called while a dialog's body runs opens
+a second dialog on top of it:
+
+<!-- wrap -->
+```d
+if (st.button("Delivery"))
+    st.session["open"] = true;
+if (st.session.get!bool("open", false))
+    st.dialog("Delivery", (St d) {
+        if (d.button("Change date"))
+            st.session["editing"] = true;
+        if (st.session.get!bool("editing", false))
+            st.dialog("Change date", (St e) {
+                auto when = e.dateInput("New date");
+                if (e.button("Save"))
+                {
+                    st.session["editing"] = false;
+                    st.rerun();
+                }
+            }, onDismiss: { st.session["editing"] = false; });
+    }, onDismiss: { st.session["open"] = false; st.session["editing"] = false; });
+```
+
+- Esc, × and a click outside close only the dialog on top; the one below keeps its state.
+- Each dialog reruns on its own when its widgets change, so Python's workaround (closing one dialog,
+  setting a flag and opening the other on the next run) is not needed.
+- A dialog's body may rerun on its own long after the run that drew it. Don't let it use a
+  `foreach` variable: D closures share it, so by then it names the last item. Open the dialog from
+  a function that takes the item as a parameter (see the [examples guide](examples.md#pitfalls)).
+
 ![dialog](images/dialog.png)
 
 ## Status containers
@@ -189,8 +240,15 @@ mixin StreamlitMain!app;
 - `navigation(..., position: "hidden")` hides the sidebar menu, for apps that navigate only
   with `pageLink`/`switchPage`.
 - Deep links (`/reports`) and the browser back/forward buttons work.
-- Widget state belongs to the page. Leaving a page forgets its widgets' values (as in
-  Streamlit). Use `st.session` to share values between pages.
+- Widgets with a `key` keep their value when the viewer leaves the page and comes back (in
+  Streamlit, apps have to copy such values into session state themselves). Widgets without a key
+  start over. `st.resetWidgets("key", ...)` forgets values on purpose, e.g. after saving a
+  form.
+- `Page(..., badge: "3")` shows a small counter next to the page, e.g. unread messages.
+- `navigation(pages, sections: "collapsible")`:
+  - sidebar sections fold;
+  - the section of the current page is open;
+  - a folded section shows the sum of its pages' badges.
 
 ### Top navigation and sections
 

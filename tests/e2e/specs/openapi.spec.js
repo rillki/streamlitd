@@ -59,7 +59,7 @@ test("API docs follow [auth] required", async ({ page, request }) => {
   await page.goto(url("auth", "/docs"));
   await expect(page).toHaveURL(/\/auth\/login\?next=%2Fdocs$/);
   await page.getByLabel("Username").fill("alice");
-  await page.getByLabel("Password").fill("secret123");
+  await page.getByLabel("Password").fill("streamlitd-demo");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/docs$/); // back to the page that asked for the login
   const spec = await (await page.request.get(url("auth", "/openapi.json"))).json();

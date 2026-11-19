@@ -15,16 +15,21 @@
 /// ---
 module streamlitd;
 
-public import streamlitd.delta : St, QueryParams, UserInfo;
+public import streamlitd.delta : St, QueryParams, UserInfo, RequestContext;
 public import streamlitd.session : AppSession, AppFn, Layout, PageConfig, RunStatus;
 public import streamlitd.state : SessionState;
 public import streamlitd.errors;
 public import streamlitd.dataframe : DataFrame, Row, ColumnType;
-public import streamlitd.elements : ProgressBar, Spinner, TimelineItem;
+public import streamlitd.columnconfig : ColumnConfig;
+public import streamlitd.dataelements : TableSelection, TableCell;
+public import streamlitd.calendar : GridRow, GridItem, GridEvent;
+public import streamlitd.elements : ProgressBar, Spinner, TimelineItem, LegendItem, FeedItem;
 public import streamlitd.widgets : TreeNode, DateRange;
 public import streamlitd.media : UploadedFile;
 public import streamlitd.pages : Page;
 public import streamlitd.cache : cacheData, cacheResource, cacheClear, clearAllCaches;
+public import streamlitd.blocking : blocking;
+public import streamlitd.text : escapeMarkdown;
 public import streamlitd.server : serve, runMain, ServerOptions, RoutesFn, apiUser, requireUser, requireRole;
 // accounts: sign-up, user store, roles (see docs/authentication.md)
 public import streamlitd.accounts : Accounts, AccountError, StoredUser, Invite, UserStore, MemoryUserStore,

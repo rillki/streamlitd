@@ -55,9 +55,18 @@ Assets are embedded at compile time, from the list in `source/streamlitd/assetli
 Regenerate it with `python3 tools/gen_assets.py` and rebuild.
 
 ### Can I use `Thread.sleep`, threads, or global variables in my app?
-Use `st.sleep` instead of `Thread.sleep`. Scripts run on worker threads, so protect `__gshared`
-state with a mutex, or use `cacheData`/`cacheResource`, which are thread-safe. `--script-threads 0`
-runs everything on one thread.
+- **Sleeping:** use `st.sleep` instead of `Thread.sleep`.
+- **Blocking calls:** wrap calls that block the thread (non-vibe database drivers, `std.net.curl`,
+  long loops) in `blocking(() => ...)`, so other users on the same worker thread are not held up.
+- **Globals:** scripts run on worker threads, and plain module-level variables are
+  **thread-local** in D, so each thread has its own copy. Data meant for everybody needs
+  `shared`/`__gshared` and a mutex, or `cacheData`/`cacheResource`, which are thread-safe.
+- `--script-threads 0` runs everything on one thread.
+
+### Two users see each other's data, or a value differs between users
+Per-user data belongs in `st.session` (one per browser tab) or in a database keyed by `st.user`.
+A module-level variable is either thread-local (it differs between worker threads, so it looks
+random) or `shared` (everybody sees it). See [Threads and blocking](concepts.md#threads-and-blocking).
 
 ### How do I connect to a database?
 Create the connection or pool once with `cacheResource`, and query inside `app`. vibe.d drivers

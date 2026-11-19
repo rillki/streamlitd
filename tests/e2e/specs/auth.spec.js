@@ -16,7 +16,7 @@ test("app requires login; password login and logout", async ({ page, request }) 
   await expect(page.getByRole("alert")).toHaveText("Invalid username or password.");
 
   await page.getByLabel("Username").fill("alice");
-  await page.getByLabel("Password").fill("secret123");
+  await page.getByLabel("Password").fill("streamlitd-demo");
   await page.getByRole("button", { name: "Sign in" }).click();
   await waitIdle(page, 1);
   await expect(page.getByText("Hello Alice (alice@example.com), signed in via password.")).toBeVisible();

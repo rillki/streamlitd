@@ -20,7 +20,7 @@ You'll learn:
 | 2 | loading data into a `DataFrame`, `cacheData` |
 | 3 | sidebar widgets as filters |
 | 4 | `columns` and `metric` |
-| 5 | `tabs`, charts, `dataframe`, `downloadButton` |
+| 5 | `tabs`, charts, `dataframe` with column formats and totals, `downloadButton` |
 | 6 | `form`, `st.session`, `st.rerun` |
 | 7 | `st.fragment` with `runEvery` |
 | 8 | page config, design styles and color schemes |
@@ -127,14 +127,27 @@ that column. Use `st.columns([2.0, 1, 1])` for relative widths.
     }
     with (tabs[1])
     {
-        dataframe(view.sortBy("date", false), height: 320);
-        downloadButton("Download CSV", view.toCsv(), "sales.csv", "text/csv");
+        dataframe(view.sortBy("date", false), height: 320, hideIndex: true,
+            columnConfig: ["date": ColumnConfig.date("Date", format: "DD.MM.YYYY"),
+                "region": ColumnConfig.text("Region"), "product": ColumnConfig.text("Product"),
+                "units": ColumnConfig.number("Units", format: "%,d"),
+                "revenue": ColumnConfig.number("Revenue", format: "$%,.2f")],
+            totals: ["date": "Total", "units": "sum", "revenue": "sum"]);
+        // the CSV is built when the button is clicked, not on every run
+        downloadButton("Download CSV", () => view.toCsv(), "sales.csv", "text/csv");
     }
 ```
 
 `with (container) { ... }` is D's counterpart of Python's `with st.sidebar:`. Inside the block,
 `dataframe(...)` means `tabs[1].dataframe(...)`. The table is sortable and searchable, and
 has its own CSV export.
+
+- `columnConfig` shows the dates as `DD.MM.YYYY` and the revenue as `$1,234.50`, and gives
+  the columns labels. The values stay numbers and dates, so sorting still works on them (see
+  [Column configuration](data-and-charts.md#column-configuration-totals-and-colours)).
+- `totals` pins a row at the bottom with the sums. It follows the search box.
+- The download button gets a function, `() => view.toCsv()`, instead of the text, so the CSV is
+  built only when someone clicks it, not on every rerun.
 
 ![the data tab](images/tutorial-data.png)
 
@@ -272,8 +285,14 @@ void app(St st)
 	}
 	with (tabs[1])
 	{
-		dataframe(view.sortBy("date", false), height: 320);
-		downloadButton("Download CSV", view.toCsv(), "sales.csv", "text/csv");
+		dataframe(view.sortBy("date", false), height: 320, hideIndex: true,
+			columnConfig: ["date": ColumnConfig.date("Date", format: "DD.MM.YYYY"),
+				"region": ColumnConfig.text("Region"), "product": ColumnConfig.text("Product"),
+				"units": ColumnConfig.number("Units", format: "%,d"),
+				"revenue": ColumnConfig.number("Revenue", format: "$%,.2f")],
+			totals: ["date": "Total", "units": "sum", "revenue": "sum"]);
+		// the CSV is built when the button is clicked, not on every run
+		downloadButton("Download CSV", () => view.toCsv(), "sales.csv", "text/csv");
 	}
 
 	// --- Step 6: a form that adds a row --------------------------------------------------
@@ -308,6 +327,11 @@ mixin StreamlitMain!app;
 
 ## Where to go next
 
+- [Example apps](examples.md) has five larger apps built like this one, but split into modules with
+  their own tests. The [helpdesk](examples.md#helpdesk) continues where this tutorial stops: tables
+  you select from, dialogs, forms, and pages that update when someone else changes the data.
+  [Purchase planning](examples.md#planning) shows editing a table and saving the changes after a
+  review, and an import wizard.
 - [Core concepts](concepts.md) explains reruns, widget keys, callbacks and fragments in depth.
 - [Data & charts](data-and-charts.md) covers everything `DataFrame` and the chart elements can do.
 - [Deployment](deployment.md) shows how to put the dashboard on a server.

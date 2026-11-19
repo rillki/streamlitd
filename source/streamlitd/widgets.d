@@ -701,8 +701,10 @@ mixin template Widgets()
 	}
 
 	private ptrdiff_t choiceIndex(string kind, string label, string[] labels, ptrdiff_t index, string key,
-		string help, void delegate() onChange, bool disabled, string labelVisibility, Json extra)
+		string help, void delegate() onChange, bool disabled, string labelVisibility, Json extra, bool required = false)
 	{
+		if (required)
+			extra["required"] = true;
 		auto id = widgetId(kind, key, [label] ~ labels);
 		auto p = commonProps(label, help, disabled, labelVisibility);
 		p["options"] = toJ(labels);
@@ -710,11 +712,15 @@ mixin template Widgets()
 		foreach (string k, v; extra)
 			p[k] = v;
 		auto n = cast(ptrdiff_t) labels.length;
-		ptrdiff_t def = (index >= 0 && index < n) ? index : -1;
+		ptrdiff_t def = (index >= 0 && index < n) ? index : required && n > 0 ? 0 : -1;
 		return widget!ptrdiff_t(kind, id, key, def,
 			(ptrdiff_t i) => i < 0 ? Json(null) : Json(cast(long) i),
 			(Json j) {
-				if (j.type == Json.Type.null_) return cast(ptrdiff_t) -1;
+				if (j.type == Json.Type.null_)
+				{
+					if (required) throw new Exception("a selection is required"); // keeps the default
+					return cast(ptrdiff_t) -1;
+				}
 				auto i = jNum!ptrdiff_t(j);
 				if (i < 0 || i >= n) throw new Exception("index out of range");
 				return i;
@@ -754,12 +760,14 @@ mixin template Widgets()
 		return r;
 	}
 
-	/// `st.pills` (single selection). Returns `null` when nothing is selected.
+	/// `st.pills` (single selection). Returns `null` when nothing is selected. With `required`,
+	/// one option is always selected (the first, unless `index` says otherwise) and clicking the
+	/// selected one keeps it (streamlitd only).
 	string pills(string label, string[] options, ptrdiff_t index = -1, string key = null, string help = null,
-		void delegate() onChange = null, bool disabled = false, string labelVisibility = "visible")
+		void delegate() onChange = null, bool disabled = false, string labelVisibility = "visible", bool required = false)
 	{
 		auto i = choiceIndex("pills", label, options, index, key, help, onChange, disabled, labelVisibility,
-			Json.emptyObject);
+			Json.emptyObject, required);
 		return i < 0 ? null : options[i];
 	}
 
@@ -784,12 +792,13 @@ mixin template Widgets()
 		return r;
 	}
 
-	/// `st.segmented_control` (single selection). Returns `null` when nothing is selected.
-	string segmentedControl(string label, string[] options, ptrdiff_t index = -1, string key = null,
-		string help = null, void delegate() onChange = null, bool disabled = false, string labelVisibility = "visible")
+	/// `st.segmented_control` (single selection). Returns `null` when nothing is selected. With
+	/// `required`, one option is always selected, like a tab bar (streamlitd only).
+	string segmentedControl(string label, string[] options, ptrdiff_t index = -1, string key = null, string help = null,
+		void delegate() onChange = null, bool disabled = false, string labelVisibility = "visible", bool required = false)
 	{
-		auto i = choiceIndex("segmented_control", label, options, index, key, help, onChange, disabled,
-			labelVisibility, Json.emptyObject);
+		auto i = choiceIndex("segmented_control", label, options, index, key, help, onChange, disabled, labelVisibility,
+			Json.emptyObject, required);
 		return i < 0 ? null : options[i];
 	}
 

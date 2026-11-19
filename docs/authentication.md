@@ -63,6 +63,11 @@ mixin StreamlitMain!app;
 
 `examples/accounts` is this app with invites, a page for one role and an admin-only API endpoint.
 
+> **Try it:** every example with a login uses the demo login **`alice` / `streamlitd-demo`**. In
+> `examples/accounts` and `examples/todo`, sign up with it first (in `accounts` that first account
+> becomes the admin); `examples/auth` and `examples/helpdesk` have alice in `secrets.toml`. See
+> [examples/README.md](../examples/README.md).
+
 ## Accounts: sign-up and roles
 
 ### Who can sign up
@@ -633,6 +638,7 @@ The same login protects the app's own [JSON API endpoints](api-endpoints.md#logi
 | `rate_limit.max_failures` | 5 | failed logins per username before it is locked (0 = no limit) |
 | `rate_limit.max_ip_failures` | 20 | failed attempts per client address before it is locked (0 = no limit) |
 | `rate_limit.minutes` | 15 | the window and lock time |
+| `signups_per_hour` | 10 | accounts one client address may create per hour (0 = no limit); keeps scripts from creating thousands of accounts where sign-up is open |
 | `cookie_secret` | generated | signs the login cookie (HMAC-SHA256), at least 16 characters. When it is not set, one is generated once into `auth_secret` next to the user store; set it yourself when several servers share the logins |
 | `cookie_days` | 30 | how long a login lasts |
 | `redirect_uri` | | required for OIDC; must match the provider registration |
@@ -641,7 +647,8 @@ The same login protects the app's own [JSON API endpoints](api-endpoints.md#logi
 
 Environment variables override the files:
 - `STREAMLITD_AUTH_REQUIRED`, `STREAMLITD_AUTH_REGISTRATION`, `STREAMLITD_AUTH_USERS_FILE`;
-- `STREAMLITD_AUTH_COOKIE_SECRET`, `STREAMLITD_AUTH_PASSWORD_MIN_LENGTH`, `STREAMLITD_AUTH_REQUIRE_EMAIL`.
+- `STREAMLITD_AUTH_COOKIE_SECRET`, `STREAMLITD_AUTH_PASSWORD_MIN_LENGTH`, `STREAMLITD_AUTH_REQUIRE_EMAIL`,
+  `STREAMLITD_AUTH_SIGNUPS_PER_HOUR`.
 
 Behind a reverse proxy, set `[server] trustProxy = true`, so the rate limits and logs use the
 client address from `X-Forwarded-For`. streamlitd takes the last entry, the one your proxy adds.
@@ -682,6 +689,9 @@ AppTest.useAccounts(new Accounts(AccountSettings.init, new MemoryUserStore, Json
     further attempts are refused for 15 minutes (`rate_limit`);
   - wrong invite codes, reset attempts and wrong current passwords on the account page count too;
   - the counters live in memory.
+- **Sign-up limit:** at most `signups_per_hour` (default 10) new accounts per client address and
+  hour, so a script can't create thousands of accounts where sign-up is open. The counter lives in
+  memory.
 - **Forms:** login, sign-up, account and reset forms carry a signed token bound to the form and
   user, and must come from the app's origin (or `allowedOrigins`).
 - **The server log:** logins, failures, lockouts, sign-ups and account changes are logged with

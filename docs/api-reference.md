@@ -13,6 +13,8 @@ Optional parameters are usually passed by name: `st.slider("x", 0, 10, 5, step: 
 - [Layout containers](#layout-containers)
 - [Partial reruns: fragments, dialogs, status](#partial-reruns-fragments-dialogs-status)
 - [Data display](#data-display)
+- [Column configuration (`ColumnConfig`)](#column-configuration-columnconfig)
+- [Calendar grid](#calendar-grid)
 - [Charts & maps](#charts--maps)
 - [Media, files & downloads](#media-files--downloads)
 - [Navigation (multipage)](#navigation-multipage)
@@ -24,6 +26,8 @@ Optional parameters are usually passed by name: `st.slider("x", 0, 10, 5, step: 
 - [Session state (`st.session`)](#session-state-stsession)
 - [DataFrame](#dataframe)
 - [Caching](#caching)
+- [Blocking calls (`blocking`)](#blocking-calls-blocking)
+- [User text in Markdown (`escapeMarkdown`)](#user-text-in-markdown-escapemarkdown)
 - [Secrets](#secrets)
 - [Themes](#themes)
 - [Server & configuration](#server--configuration)
@@ -53,6 +57,12 @@ Update the bar (0.0..1.0).
 #### `struct Spinner`
 RAII spinner returned by `st.spinner(text)`; removed when it goes out of scope.
 
+#### `struct LegendItem`
+An entry of `st.legend`.
+
+#### `struct FeedItem`
+An item of `st.feed` (a notification or alert).
+
 #### `struct TimelineItem`
 An event of `st.timeline`.
 
@@ -74,7 +84,7 @@ void subheader(string text, string anchor = null, string help = null, string div
 ```d
 void markdown(string body_, bool unsafeAllowHtml = false, string help = null)
 ```
-`st.markdown` — GitHub-flavoured Markdown. Raw HTML is escaped unless `unsafeAllowHtml`.
+`st.markdown` — GitHub-flavoured Markdown. Raw HTML is escaped unless `unsafeAllowHtml`. Colours as in Streamlit: `:red[text]`, `:blue-background[text]`, `:green-badge[text]` (a small label, like `st.badge`).
 
 ```d
 void caption(string body_, bool unsafeAllowHtml = false)
@@ -109,7 +119,7 @@ void linkButton(string label, string url, string help = null, string type = "sec
 ```d
 void badge(string label, string icon = null, string color = "blue")
 ```
-`st.badge`: a small colored label. Colors: blue, green, orange, red, violet, gray, primary.
+`st.badge`: a small colored label. Colors: blue, green, orange, red, violet, gray, primary. Inside Markdown text, write `:blue-badge[label]`.
 
 ```d
 void divider()
@@ -147,12 +157,12 @@ void avatar(string name, string image = null, string size = "medium")
 A round picture or the initials of `name` (streamlitd only). `size`: "small", "medium" or "large".
 
 ```d
-void details(string[2][] rows)
+void details(string[2][] rows, bool inline = false)
 ```
-Labels and values of one record, in a two-column list (streamlitd only), e.g. a customer's details. Values are Markdown.
+Labels and values of one record, in a two-column list (streamlitd only), e.g. a customer's details. Values are Markdown. `inline: true` puts them side by side in one row (a stat strip).
 
 ```d
-void details(Json record)
+void details(Json record, bool inline = false)
 ```
 ditto, from a JSON object: its keys are the labels, in alphabetical order (JSON objects keep no order; use the `string[2][]` form for your own order). Non-string values are shown as JSON.
 
@@ -187,24 +197,44 @@ void exception(Throwable e)
 `st.exception`
 
 ```d
-void metric(string label, string value, string delta = null, string deltaColor = "normal", string help = null, bool border = false)
+void metric(string label, string value, string delta = null, string deltaColor = "normal", string help = null, bool border = false, double[] chartData = null, string chartType = "line", string caption = null)
 ```
-`st.metric`. `delta` starting with "-" is shown as a decrease.
+`st.metric`. `delta` starting with "-" is shown as a decrease. `chartData` draws a small trend chart under the value (`chartType`: "line", "bar" or "area"); `caption` adds a small line, e.g. "was 1,204 on 01.10" (streamlitd only).
 
 ```d
-void metric(string label, int value, string delta = null, string deltaColor = "normal", string help = null, bool border = false)
+void metric(string label, int value, string delta = null, string deltaColor = "normal", string help = null, bool border = false, double[] chartData = null, string chartType = "line", string caption = null)
 ```
 ditto (an exact `int` overload, so int values are not ambiguous between long and double)
 
 ```d
-void metric(string label, long value, string delta = null, string deltaColor = "normal", string help = null, bool border = false)
+void metric(string label, long value, string delta = null, string deltaColor = "normal", string help = null, bool border = false, double[] chartData = null, string chartType = "line", string caption = null)
 ```
 ditto
 
 ```d
-void metric(string label, double value, string delta = null, string deltaColor = "normal", string help = null, bool border = false)
+void metric(string label, double value, string delta = null, string deltaColor = "normal", string help = null, bool border = false, double[] chartData = null, string chartType = "line", string caption = null)
 ```
 ditto
+
+```d
+void emptyState(string title, string body_ = null, string icon = "🗂️")
+```
+A placeholder for "nothing here yet" (streamlitd only): an icon, a title and a Markdown body, e.g. when a filter matches no rows.
+
+```d
+void legend(LegendItem[] items, string title = null)
+```
+A legend for charts and colour-coded tables (streamlitd only).
+
+```d
+void proportionBar(double[] values, string[] labels, string[] colors = null, string format = null)
+```
+A bar split into parts in proportion to `values`, with a legend (streamlitd only), e.g. the share of stock per status. `colors`: tokens ("success", "warning", "error", "info", "muted", "primary") or hex colours; default: the chart palette.
+
+```d
+void feed(FeedItem[] items)
+```
+A list of notifications or alerts (streamlitd only): each with a title, a Markdown body, a time, a severity colour, an unread dot and small badges.
 
 ```d
 void json(Json value, bool expanded = true)
@@ -409,9 +439,9 @@ string colorPicker(string label, string value = "#000000", string key = null, st
 `st.color_picker`
 
 ```d
-string pills(string label, string[] options, ptrdiff_t index = -1, string key = null, string help = null, void delegate() onChange = null, bool disabled = false, string labelVisibility = "visible")
+string pills(string label, string[] options, ptrdiff_t index = -1, string key = null, string help = null, void delegate() onChange = null, bool disabled = false, string labelVisibility = "visible", bool required = false)
 ```
-`st.pills` (single selection). Returns `null` when nothing is selected.
+`st.pills` (single selection). Returns `null` when nothing is selected. With `required`, one option is always selected (the first, unless `index` says otherwise) and clicking the selected one keeps it (streamlitd only).
 
 ```d
 T pillsOf(T)(string label, T[] options, ptrdiff_t index = -1, string key = null, string help = null, void delegate() onChange = null, bool disabled = false, string delegate(T) formatFunc = null, string labelVisibility = "visible")
@@ -424,9 +454,9 @@ string[] pillsMulti(string label, string[] options, string[] default_ = null, st
 `st.pills(selection_mode="multi")`
 
 ```d
-string segmentedControl(string label, string[] options, ptrdiff_t index = -1, string key = null, string help = null, void delegate() onChange = null, bool disabled = false, string labelVisibility = "visible")
+string segmentedControl(string label, string[] options, ptrdiff_t index = -1, string key = null, string help = null, void delegate() onChange = null, bool disabled = false, string labelVisibility = "visible", bool required = false)
 ```
-`st.segmented_control` (single selection). Returns `null` when nothing is selected.
+`st.segmented_control` (single selection). Returns `null` when nothing is selected. With `required`, one option is always selected, like a tab bar (streamlitd only).
 
 ```d
 T segmentedControlOf(T)(string label, T[] options, ptrdiff_t index = -1, string key = null, string help = null, void delegate() onChange = null, bool disabled = false, string delegate(T) formatFunc = null, string labelVisibility = "visible")
@@ -470,9 +500,9 @@ Containers return a new `St` that writes into them (use `with (c) { ... }`).
 `st.footer`: the area under the main content, on every page (streamlitd only).
 
 ```d
-St card(string title = null, string subtitle = null, string image = null, string icon = null, string key = null)
+St card(string title = null, string subtitle = null, string image = null, string icon = null, string key = null, string link = null)
 ```
-A card (streamlitd only): a framed box with an optional image (URL) or icon, a title and a subtitle. Returns its body; put text, metrics and buttons in it. Use `st.columns` for a grid.
+A card (streamlitd only): a framed box with an optional image (URL) or icon, a title and a subtitle. Returns its body; put text, metrics and buttons in it. Use `st.columns` for a grid. With `link` (an app page's URL path, or an http(s) URL) the whole card is a link; buttons in it still work.
 
 ```d
 St container(bool border = false, int height = 0, string key = null)
@@ -580,9 +610,9 @@ FragmentRef fragment(void delegate(St) body_, double runEvery = 0, string key = 
 `st.fragment`: the body reruns on its own when a widget inside it changes, without rerunning the whole app. `runEvery` (seconds) reruns it periodically (live dashboards). Pass a lambda `(St f) { ... }`; for a named function use `toDelegate(&fn)`. Event-driven updates (streamlitd only): `refreshWhen` is asked each time a `runEvery` run is due, and `false` skips that run (nothing runs, nothing is sent) until the next period; it runs on the server's event loop, so keep it light (a version counter, a file's modification time). `refreshOn` subscribes the fragment to topics (comma-separated), which `refreshFragments(topic)` reruns at once in every open tab, from any thread. The returned `FragmentRef` reruns this fragment in this tab with `refresh()`.
 
 ```d
-void dialog(string title, void delegate(St) body_, string width = "small", bool dismissible = true, string key = null)
+void dialog(string title, void delegate(St) body_, string width = "small", bool dismissible = true, string key = null, void delegate() onDismiss = null)
 ```
-`st.dialog`: shows a modal dialog. Its widgets rerun only the dialog. The dialog stays open while it reruns and closes on the next full rerun in which it is not opened again (e.g. after `st.rerun()`), or when the user dismisses it.
+`st.dialog`: shows a modal dialog. Its widgets rerun only the dialog. The dialog stays open while it reruns and closes on the next full rerun in which it is not opened again (e.g. after `st.rerun()`), or when the user dismisses it. Called while a dialog's body runs, it opens a dialog on top of that one (streamlitd only): Esc and × close the top one, and the one below keeps its state.  A dialog opened because of a session value (`if (st.session.get!bool("editing")) st.dialog(...)`) would open again on the next full rerun after the user closed it. `onDismiss` fixes that: closing it with ×, Esc or a click outside reruns the app and calls `onDismiss` first, e.g. `onDismiss: { st.session.remove("editing"); }`.
 
 ```d
 StatusContainer status(string label, bool expanded = false, string state = "running")
@@ -594,7 +624,7 @@ StatusContainer status(string label, bool expanded = false, string state = "runn
 Source: [`source/streamlitd/dataelements.d`](../source/streamlitd/dataelements.d)
 
 ```d
-DataFrame applyEditorState(DataFrame src, Json state, out long[] rowMap)
+DataFrame applyEditorState(DataFrame src, Json state, out long[] rowMap, const ColumnConfig[string] config = null, const string[] disabledCols = null, size_t maxRows = 0)
 ```
 Apply a data_editor state (`{edited, added, deleted}`) to a frame. Returns the resulting frame and fills `rowMap` with the source of each output row (original row index, or `-(k+1)` for the k-th added row).
 
@@ -603,10 +633,21 @@ Json coerceCell(Json v, ColumnType t)
 ```
 Convert an edited value coming from the browser to the column type.
 
+#### `struct TableCell`
+A cell picked in a `single-cell` selection.
+
+#### `struct TableSelection`
+What the viewer selected in an `st.dataframe(..., onSelect: "rerun")`.
+
 ```d
-void dataframe(DataFrame df, int height = 0, bool hideIndex = false, bool useContainerWidth = true, string[] columnOrder = null)
+bool empty() const
 ```
-`st.dataframe` — interactive (sortable, scrollable) table.
+Nothing selected?
+
+```d
+TableSelection dataframe(DataFrame df, int height = 0, bool hideIndex = false, bool useContainerWidth = true, string[] columnOrder = null, ColumnConfig[string] columnConfig = null, string[string] totals = null, string delegate(size_t row, string column, Json value) cellStyle = null, int maxHeight = 0, string onSelect = "ignore", string selectionMode = "single-row", string rowKey = null, string key = null, string[] groupBy = null, int expanded = 0, void delegate() onChange = null)
+```
+`st.dataframe` — interactive table: sort by clicking a header, search, CSV download. - `columnConfig`: per column label, format, width, tooltip, pinned/hidden, colours, grouped headers (see `ColumnConfig`); - `totals`: a row pinned at the bottom: per column `"sum"`, `"mean"`, `"min"`, `"max"`, `"count"` or a text such as `"Total"` (computed over the rows shown, after search); - `cellStyle`: style tokens per cell (`"bg:success"`, `"text:error"`, `"bold"`, `"bg:#fff3cd"`; several separated by spaces), or null; - `height`: fixed height in pixels; `maxHeight`: grow with the rows up to this height (default: 400 px).  Selection: with `onSelect: "rerun"` the table is a widget; clicking a row (or cell) reruns the app and returns the selection. `selectionMode`: `"single-row"` (click again to clear), `"multi-row"` (checkboxes, Shift-click for ranges) or `"single-cell"`. `rowKey` names a column whose values identify rows (`selection.keys`; the selection then survives filtering). Keyboard: ↑/↓ move between rows, Space or Enter selects.  Tree rows: `groupBy: ["manager", "supplier"]` groups the rows into levels that open and close (←/→ with the keyboard), with group values aggregated by `totals`; sorting keeps rows under their group. `expanded` levels are open at first.
 
 ```d
 void dataframe(Json records, int height = 0, bool hideIndex = false)
@@ -614,14 +655,108 @@ void dataframe(Json records, int height = 0, bool hideIndex = false)
 `st.dataframe` for JSON records.
 
 ```d
-void table(DataFrame df, bool hideIndex = false)
+void table(DataFrame df, bool hideIndex = false, ColumnConfig[string] columnConfig = null, string[string] totals = null, string delegate(size_t row, string column, Json value) cellStyle = null)
 ```
-`st.table` — static table.
+`st.table` — static table (no sorting or scrolling); `columnConfig`, `totals` and `cellStyle` work as in `dataframe`.
 
 ```d
-DataFrame dataEditor(DataFrame df, string key = null, string numRows = "fixed", string[] disabled = null, bool hideIndex = false, int height = 0, void delegate() onChange = null, bool disabledAll = false)
+DataFrame dataEditor(DataFrame df, string key = null, string numRows = "fixed", string[] disabled = null, bool hideIndex = false, int height = 0, void delegate() onChange = null, bool disabledAll = false, ColumnConfig[string] columnConfig = null, string[] columnOrder = null, size_t maxRows = 0)
 ```
-`st.data_editor` — editable table; returns the edited frame. `numRows`: "fixed" or "dynamic" (allows adding/deleting rows).
+`st.data_editor` — editable table; returns the edited frame. `numRows`: "fixed" or "dynamic" (allows adding/deleting rows). `columnConfig` chooses the editors (`ColumnConfig.select(options)` is a drop-down, `number` has min/max/step, `checkbox`, `date`, ...); edits it does not allow are dropped on the server too. `maxRows` (with `numRows: "dynamic"`) limits how many rows the table may have: "+ Add row" stops there, and rows added beyond it are ignored on the server (0 = no limit).
+
+## Column configuration (`ColumnConfig`)
+
+Source: [`source/streamlitd/columnconfig.d`](../source/streamlitd/columnconfig.d)
+
+See [Data & charts](data-and-charts.md#column-configuration-totals-and-colours).
+
+#### `struct ColumnConfig`
+How one column is shown (and edited). Make one with the static functions (`ColumnConfig.number`, `ColumnConfig.date`, ...); every argument is optional.
+
+```d
+static ColumnConfig text(string label = null, string help = null, string width = null, bool pinned = false, bool disabled = false, size_t maxChars = 0, bool required = false, string color = null, string background = null, string group = null, bool hidden = false)
+```
+A text column.
+
+```d
+static ColumnConfig number(string label = null, string format = null, string help = null, string width = null, double min = double.nan, double max = double.nan, double step = double.nan, bool pinned = false, bool disabled = false, bool required = false, string color = null, string background = null, string detailColumn = null, string group = null, bool hidden = false)
+```
+A number column.
+
+```d
+static ColumnConfig date(string label = null, string format = null, string help = null, string width = null, bool pinned = false, bool disabled = false, bool required = false, string group = null)
+```
+A date column (values "YYYY-MM-DD").
+
+```d
+static ColumnConfig datetime(string label = null, string format = null, string help = null, string width = null, bool pinned = false, bool disabled = false, string group = null)
+```
+A date-and-time column (values "YYYY-MM-DDTHH:MM:SS").
+
+```d
+static ColumnConfig time(string label = null, string format = null, string help = null, string width = null, bool disabled = false, string group = null)
+```
+A time column (values "HH:MM" or "HH:MM:SS").
+
+```d
+static ColumnConfig checkbox(string label = null, string help = null, string width = null, bool disabled = false, string group = null)
+```
+A true/false column (a checkbox in the editor).
+
+```d
+static ColumnConfig select(string label = null, string[] options = null, bool required = false, string help = null, string width = null, bool disabled = false, string group = null)
+```
+A column whose values come from `options` (a themed drop-down in the editor).
+
+```d
+static ColumnConfig progress(string label = null, double min = 0, double max = 100, string format = null, string help = null, string width = null, string group = null)
+```
+A progress bar between `min` and `max`, with the value as its label.
+
+```d
+static ColumnConfig link(string label = null, string displayText = null, string help = null, string width = null, string group = null)
+```
+A link (the URL is the value); `displayText` replaces the URL in the cell.
+
+```d
+static ColumnConfig column(string label = null, string help = null, string width = null, bool pinned = false, bool disabled = false, string group = null)
+```
+Only a header label, tooltip, width or group; the type comes from the data.
+
+```d
+static ColumnConfig hide()
+```
+A column that is not shown (see the `hidden` field).
+
+```d
+Json toJson() const
+```
+The JSON sent to the browser.
+
+## Calendar grid
+
+Source: [`source/streamlitd/calendar.d`](../source/streamlitd/calendar.d)
+
+See [More elements](more-elements.md#calendar-grid).
+
+#### `struct GridRow`
+A row of `st.calendarGrid`. Rows with a `parent` are shown under it, when it is opened.
+
+#### `struct GridItem`
+An item on the grid: a marker on one day, or a span from `start` to `end`.
+
+#### `struct GridEvent`
+What was clicked in a `st.calendarGrid` (on the run triggered by the click only).
+
+```d
+bool opCast(T : bool)() const
+```
+Did something get clicked in this run?
+
+```d
+GridEvent calendarGrid(GridRow[] rows, GridItem[] items, Date start, Date end, string unit = "day", string key = null, string focus = null, int height = 0, Date today = Date.init, string summaryLabel = null, int expanded = 0)
+```
+A calendar grid (streamlitd only): one row per `GridRow` (rows with a `parent` open under it), one column per day (or week) from `start` to `end`, with markers and spans. Weekends, today and month starts are marked. Clicking an item, a row name or an empty day reruns the app and returns a `GridEvent` (like a button: only in that run). `focus` scrolls to an item and highlights it once. Keyboard: arrows move between items, Enter opens.  auto ev = st.calendarGrid(rows, items, Date(2026, 11, 1), Date(2026, 12, 31), key: "plan"); if (ev.kind == "item") st.dialog("Delivery", (St d) { d.write(ev.item); });
 
 ## Charts & maps
 
@@ -735,6 +870,16 @@ bool downloadButton(string label, const(ubyte)[] data, string fileName, string m
 `st.download_button` — returns true on the run triggered by the click.
 
 ```d
+void downloadButton(string label, const(ubyte)[] delegate() build, string fileName, string mime = "application/octet-stream", string key = null, string help = null, bool disabled = false, string type = "secondary", bool useContainerWidth = false, string icon = null)
+```
+ditto, with the file built only when it is clicked (not on every run), e.g. an Excel export (streamlitd only). `build` runs on its own thread, so a slow export does not hold up other sessions. The link works while the button is on the page. No rerun happens on click.
+
+```d
+void downloadButton(string label, string delegate() build, string fileName, string mime = "text/plain", string key = null, string help = null, bool disabled = false, string type = "secondary", bool useContainerWidth = false, string icon = null)
+```
+ditto, text built on click.
+
+```d
 bool downloadButton(string label, string data, string fileName, string mime = "text/plain", string key = null, string help = null, void delegate() onClick = null, bool disabled = false, string type = "secondary", bool useContainerWidth = false, string icon = null)
 ```
 ditto, text data.
@@ -767,9 +912,9 @@ string slugify(string title)
 URL slug of a title.
 
 ```d
-Page navigation(Page[] pages, string position = "sidebar")
+Page navigation(Page[] pages, string position = "sidebar", string sections = "headings")
 ```
-`st.navigation` — declares the pages and returns the selected one; call `.run(st)` on it. `position`: "sidebar", "top" (links in the header bar; sections become dropdowns, and on narrow screens everything moves into a ☰ menu) or "hidden". Group pages with `Page.section`.
+`st.navigation` — declares the pages and returns the selected one; call `.run(st)` on it. `position`: "sidebar", "top" (links in the header bar; sections become dropdowns, and on narrow screens everything moves into a ☰ menu) or "hidden". Group pages with `Page.section`. `sections`: "headings" (default) or "collapsible": in the sidebar, sections fold, and the current page's section is open.
 
 ```d
 void switchPage(string page)
@@ -915,6 +1060,16 @@ The per-session state (`st.session_state`).
 `st.secrets` — values from `.streamlitd/secrets.toml` (never sent to the browser).
 
 ```d
+@property RequestContext context()
+```
+`st.context`: the browser request behind this session: headers, cookies, client address, language, time zone and page URL (e.g. to read a single-sign-on cookie of a portal).
+
+```d
+void resetWidgets(string[] keys...)
+```
+Forget the values of these keyed widgets: they show their defaults from this run on (e.g. after saving a form, instead of changing keys).
+
+```d
 @property UserInfo user()
 ```
 `st.user`: the logged-in user (see `[auth]` configuration).
@@ -988,6 +1143,19 @@ Celebrate (`st.snow`).
 @property QueryParams queryParams()
 ```
 Current URL query parameters (`st.query_params`).
+
+#### `struct RequestContext`
+The browser request behind a session (`st.context`), taken when the page connected; `locale`, `timezone` and `url` follow the browser.
+
+```d
+string header(string name) const
+```
+A header by name, in any case, or null.
+
+```d
+string cookie(string name) const
+```
+A cookie by name, or null.
 
 #### `struct UserInfo`
 The logged-in user (`st.user`).
@@ -1744,9 +1912,9 @@ Json toRecords()
 Array of `{column: value}` objects.
 
 ```d
-string toCsv(char separator = ',')
+string toCsv(char separator = ',', bool safe = false)
 ```
-CSV text.
+CSV text.  `safe`: text cells that a spreadsheet would run as a formula (starting with `=`, `+`, `-`, `@`, Tab or CR, and not a number) get a leading `'`. Use it for files people open in Excel when the data holds text users typed ("CSV injection").
 
 ## Caching
 
@@ -1767,6 +1935,23 @@ Clear the cache of one function.
 void clearAllCaches()
 ```
 Clear all caches (`st.cache_data.clear()`).
+
+## Blocking calls (`blocking`)
+
+Source: [`source/streamlitd/blocking.d`](../source/streamlitd/blocking.d)
+
+See [Threads and blocking](concepts.md#threads-and-blocking).
+
+## User text in Markdown (`escapeMarkdown`)
+
+Source: [`source/streamlitd/text.d`](../source/streamlitd/text.d)
+
+See [Core concepts](concepts.md#user-text-in-markdown).
+
+```d
+string escapeMarkdown(string s) @safe pure
+```
+Escape `s` so Markdown shows it as typed: no formatting, links, images, colour directives (`:red[...]`), math (`$...$`) or HTML. Use it whenever user input goes into `st.markdown`, `st.write`, labels, captions, feeds and the like:  st.markdown("**" ~ escapeMarkdown(ticket.title) ~ "**");
 
 ## Secrets
 
@@ -2174,6 +2359,36 @@ Number of script runs (full and fragment) started so far.
 AppTest loginAs(string username, string[] roles = null, string name = null, string email = null)
 ```
 Act as a logged-in user (`st.user`), e.g. `at.loginAs("ann", ["admin"])`. A user of the account service set with `useAccounts` is taken from its store (its roles count then).
+
+```d
+AppTest selectRows(string key, size_t[] rows...)
+```
+Select rows of an `st.dataframe(..., onSelect: "rerun", key: key)` (call `run()` afterwards).
+
+```d
+AppTest selectGroup(string key, string[] path...)
+```
+Select a group row of a tree table (`groupBy`) by its path (call `run()` afterwards).
+
+```d
+int[][] paths(string block)
+```
+Paths of the containers of one block kind ("dialog", "card", "expander", ...) in page order, e.g. to check that one is drawn inside another.
+
+```d
+AppTest trigger(string key, Json value)
+```
+Send an event to a keyed widget that triggers a run, e.g. a click in `st.calendarGrid(..., key: key)`: `at.trigger("plan", Json(["kind": Json("row"), "row": Json("acme")]))`.
+
+```d
+AppTest dismissDialog(string title)
+```
+Close a dialog like the user does with × or Esc (call `run()` afterwards). Without `onDismiss` the server never hears of it, so this throws.
+
+```d
+AppTest setContext(RequestContext c)
+```
+Set `st.context` (request headers, cookies, address, language, time zone, URL).
 
 ```d
 AppTest logout()

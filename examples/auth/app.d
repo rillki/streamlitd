@@ -6,7 +6,8 @@ void app(St st)
 {
 	st.title("Members area");
 	auto u = st.user;
-	st.write("Hello **" ~ u.name ~ "**" ~ (u.email.length ? " (" ~ u.email ~ ")" : "") ~ ", signed in via " ~ u.provider ~ ".");
+	st.write("Hello **" ~ escapeMarkdown(u.name) ~ "**" ~ (u.email.length ? " (" ~ escapeMarkdown(u.email) ~ ")" : "")
+		~ ", signed in via " ~ escapeMarkdown(u.provider) ~ "."); // names and emails are typed by people
 	if (st.button("Log out"))
 		st.logout();
 	// the user menu in the header bar: picture or initials, the app's items and "Log out"

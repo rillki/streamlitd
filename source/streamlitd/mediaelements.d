@@ -128,6 +128,32 @@ mixin template MediaElements()
 		return widget!bool("download_button", id, key, false, (bool v) => Json(v), (Json j) => true, onClick, p, true);
 	}
 
+	/// ditto, with the file built only when it is clicked (not on every run), e.g. an Excel export
+	/// (streamlitd only). `build` runs on its own thread, so a slow export does not hold up other
+	/// sessions. The link works while the button is on the page. No rerun happens on click.
+	void downloadButton(string label, const(ubyte)[] delegate() build, string fileName,
+		string mime = "application/octet-stream", string key = null, string help = null, bool disabled = false,
+		string type = "secondary", bool useContainerWidth = false, string icon = null)
+	{
+		auto id = widgetId("download_button", key, label, fileName, "lazy");
+		if (id in sess.seenIds)
+			throw new DuplicateWidgetID("There are multiple download buttons with the same id (`" ~ id ~
+				"`). Pass a unique `key` argument to each of them.");
+		sess.seenIds[id] = true;
+		auto url = sess.registerLazyDownload(id, AppSession.LazyDownload(build, fileName, mime));
+		emit(jo("kind", "download_button", "label", label, "help", help, "disabled", disabled, "type", type,
+			"fullWidth", useContainerWidth, "url", url, "fileName", fileName, "icon", icon, "lazy", true));
+	}
+
+	/// ditto, text built on click.
+	void downloadButton(string label, string delegate() build, string fileName, string mime = "text/plain",
+		string key = null, string help = null, bool disabled = false, string type = "secondary",
+		bool useContainerWidth = false, string icon = null)
+	{
+		downloadButton(label, () => cast(const(ubyte)[]) build(), fileName, mime, key, help, disabled, type,
+			useContainerWidth, icon);
+	}
+
 	/// ditto, text data.
 	bool downloadButton(string label, string data, string fileName, string mime = "text/plain",
 		string key = null, string help = null, void delegate() onClick = null, bool disabled = false,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile the D code snippets in docs/*.md and check relative links/images in docs and README.
+"""Compile the D code snippets in docs/*.md and check relative links/images in docs, README and examples/README.
 
 Every ```d block must be preceded by one of these markers:
   <!-- compile -->     a complete module (`mixin StreamlitMain!app;` / `!(app, routes);` is stripped)
@@ -77,7 +77,7 @@ LINK = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 
 def check_links():
     bad = []
-    files = glob.glob(os.path.join(DOCS, "*.md")) + [os.path.join(ROOT, "README.md")]
+    files = glob.glob(os.path.join(DOCS, "*.md")) + [os.path.join(ROOT, "README.md"), os.path.join(ROOT, "examples", "README.md")]
     for md in files:
         text = open(md, encoding="utf-8").read()
         text = re.sub(r"```.*?```", "", text, flags=re.S)

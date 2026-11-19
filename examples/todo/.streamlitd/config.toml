@@ -1,0 +1,6 @@
+# Everyone signs up on the login page and gets lists of their own. Passwords are hashed
+# automatically; the first account becomes the administrator.
+[auth]
+required = true
+registration = "open"
+# users_file = ".streamlitd/users.json"   # the default; STREAMLITD_AUTH_USERS_FILE overrides it

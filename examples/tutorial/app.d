@@ -55,8 +55,14 @@ void app(St st)
 	}
 	with (tabs[1])
 	{
-		dataframe(view.sortBy("date", false), height: 320);
-		downloadButton("Download CSV", view.toCsv(), "sales.csv", "text/csv");
+		dataframe(view.sortBy("date", false), height: 320, hideIndex: true,
+			columnConfig: ["date": ColumnConfig.date("Date", format: "DD.MM.YYYY"),
+				"region": ColumnConfig.text("Region"), "product": ColumnConfig.text("Product"),
+				"units": ColumnConfig.number("Units", format: "%,d"),
+				"revenue": ColumnConfig.number("Revenue", format: "$%,.2f")],
+			totals: ["date": "Total", "units": "sum", "revenue": "sum"]);
+		// the CSV is built when the button is clicked, not on every run
+		downloadButton("Download CSV", () => view.toCsv(), "sales.csv", "text/csv");
 	}
 
 	// --- Step 6: a form that adds a row --------------------------------------------------

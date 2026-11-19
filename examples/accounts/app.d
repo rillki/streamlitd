@@ -6,8 +6,9 @@ import std.array : join;
 void home(St st)
 {
 	auto u = st.user;
-	st.title("👋 Welcome, " ~ u.name);
-	st.write("You are signed in as `" ~ u.username ~ "`. Roles: " ~ (u.roles.length ? "**" ~ u.roles.join(", ") ~ "**" : "none") ~ ".");
+	st.title("👋 Welcome, " ~ escapeMarkdown(u.name));
+	st.write("You are signed in as **" ~ escapeMarkdown(u.username) ~ "**. Roles: "
+		~ (u.roles.length ? "**" ~ escapeMarkdown(u.roles.join(", ")) ~ "**" : "none") ~ ".");
 	if (u.isAdmin)
 		st.info("You are an administrator: add users, give roles and send invites on the **Admin** page.");
 	st.caption("Change your name, email or password with **Account settings** in the user menu (top right).");

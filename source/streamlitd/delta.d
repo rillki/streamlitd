@@ -21,10 +21,11 @@ import std.algorithm : startsWith;
 import std.format : format;
 import std.math : isInfinity;
 import std.file : read;
-import streamlitd.elements : ProgressBar, Spinner, progressElement, TimelineItem;
+import streamlitd.elements : ProgressBar, Spinner, progressElement, TimelineItem, LegendItem, FeedItem;
 import streamlitd.dataframe : DataFrame;
 import streamlitd.widgets : limitChars, formatOptions, numJ, jNum, dateStr, strDate, timeStr, strTime, TreeNode, DateRange, collectTreeIds, treeJson, normalizeTree;
-import streamlitd.dataelements : applyEditorState;
+import streamlitd.dataelements : applyEditorState, tableJson, TableSelection, TableCell, decodeSelection, selectionJson;
+import streamlitd.columnconfig : ColumnConfig, columnConfigJson;
 import streamlitd.charts : buildChartSpec;
 import streamlitd.media : MediaManager, UploadedFile;
 import streamlitd.mediaelements : uploadsToJson, uploadsFromJson;
@@ -41,6 +42,7 @@ import streamlitd.fragments : FragmentElements, StatusContainer, FragmentRef;
 import streamlitd.components : ComponentElements, ComponentsApi, findComponent;
 import streamlitd.extensions : CustomElements, isElementRegistered;
 import streamlitd.useradmin : AccountElements;
+import streamlitd.calendar : CalendarElements, GridRow, GridItem, GridEvent;
 import streamlitd.accounts : Accounts;
 static import streamlitd.accounts;
 
@@ -82,6 +84,21 @@ final class St
 
 	/// `st.secrets` — values from `.streamlitd/secrets.toml` (never sent to the browser).
 	@property Secrets secrets() { return streamlitd.secrets.secrets(); }
+
+	/// `st.context`: the browser request behind this session: headers, cookies, client address,
+	/// language, time zone and page URL (e.g. to read a single-sign-on cookie of a portal).
+	@property RequestContext context() { return sess.requestContext(); }
+
+	/// Forget the values of these keyed widgets: they show their defaults from this run on (e.g.
+	/// after saving a form, instead of changing keys).
+	void resetWidgets(string[] keys...)
+	{
+		foreach (k; keys)
+		{
+			sess.session.remove(k);
+			sess.widgetValues.remove("k:" ~ k);
+		}
+	}
 
 	/// `st.user`: the logged-in user (see `[auth]` configuration).
 	@property UserInfo user() { return UserInfo(sess.user); }
@@ -383,9 +400,38 @@ final class St
 	mixin ComponentElements;
 	mixin CustomElements;
 	mixin AccountElements;
+	mixin CalendarElements;
 }
 
 package UserInfo makeUserInfo(Json data) { return UserInfo(data); }
+
+/// The browser request behind a session (`st.context`), taken when the page connected; `locale`,
+/// `timezone` and `url` follow the browser.
+struct RequestContext
+{
+	string[string] headers;  /// request headers, names in lower case (use `header(name)`)
+	string[string] cookies;  /// cookies by name
+	string ip;               /// client address (the proxy's `X-Forwarded-For` with `[server] trustProxy`)
+	string locale;           /// the browser's language, e.g. "ru-RU" (else the first of Accept-Language)
+	string timezone;         /// the browser's time zone, e.g. "Asia/Almaty"
+	int timezoneOffset;      /// minutes east of UTC, e.g. 300
+	string url;              /// the page's URL in the browser
+
+	/// A header by name, in any case, or null.
+	string header(string name) const
+	{
+		import std.uni : toLower;
+		auto p = name.toLower in headers;
+		return p ? *p : null;
+	}
+
+	/// A cookie by name, or null.
+	string cookie(string name) const
+	{
+		auto p = name in cookies;
+		return p ? *p : null;
+	}
+}
 
 /// The logged-in user (`st.user`).
 struct UserInfo

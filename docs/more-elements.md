@@ -2,7 +2,8 @@
 
 Elements that business apps often need and that Streamlit does not have (or only through
 third-party components). They follow the color scheme, mode and design style like the built-in
-ones; `examples/widgets` shows all of them in its **More** tab.
+ones. `examples/widgets` shows most of them in its **More** tab, and `examples/business` shows them
+in a dashboard.
 
 The page's own building blocks (top navigation, header bar, footer, banners, user menu,
 breadcrumbs) are in [Layout & navigation](layout-and-navigation.md#app-shell-header-bar-footer-and-banners).
@@ -11,7 +12,7 @@ breadcrumbs) are in [Layout & navigation](layout-and-navigation.md#app-shell-hea
 |---|---|
 | [Menu button](#menu-button) | `string menuButton(label, items, ...)` |
 | [Pagination](#pagination) | `size_t pagination(totalItems, pageSize, ...)` |
-| [Card](#card) | `St card(title, subtitle, image, icon)` |
+| [Card](#card) | `St card(title, subtitle, image, icon, key, link)` |
 | [Stepper](#stepper) | `stepper(steps, current, orientation)` |
 | [Loading placeholder](#loading-placeholder) | `skeleton(lines, height)` |
 | [Timeline](#timeline) | `timeline(TimelineItem[])` |
@@ -21,6 +22,12 @@ breadcrumbs) are in [Layout & navigation](layout-and-navigation.md#app-shell-hea
 | [Tree select](#tree-select) | `string[] treeSelect(label, TreeNode[], value, multi, ...)` |
 | [Date range](#date-range) | `DateRange dateRangeInput(label, value, minValue, maxValue, ...)` |
 | [Copy button](#copy-button) | `copyButton(text, label, icon, help, url)` |
+| [KPI with a trend](#kpi-with-a-trend) | `metric(..., chartData:, chartType:, caption:)` |
+| [Empty state](#empty-state) | `emptyState(title, body, icon)` |
+| [Legend](#legend) | `legend(LegendItem[], title)` |
+| [Proportion bar](#proportion-bar) | `proportionBar(values, labels, colors, format)` |
+| [Feed](#feed) | `feed(FeedItem[])` |
+| [Calendar grid](#calendar-grid) | `GridEvent calendarGrid(GridRow[], GridItem[], start, end, unit, ...)` |
 | Rerun / appearance buttons | `rerunButton(label, icon)`, `settingsButton(label, icon)`: the header's ⟳ and ⚙ anywhere ([Header controls](layout-and-navigation.md#header-controls-rerun-and-appearance)) |
 
 ## Menu button
@@ -68,6 +75,15 @@ foreach (i, name; ["Revenue", "Orders", "Customers"])
 
 A framed box with an optional image (`image:` a URL), icon, title and subtitle. It returns its
 body: put anything inside. Each design frames it like a bordered container.
+
+`link:` makes the whole card a link, to an app page (its URL path) or an `https://` address. Buttons
+and widgets inside it still work, and Ctrl-click opens the page in a new tab:
+
+<!-- wrap -->
+```d
+with (st.card("Suppliers", "Plan and fact by brand", icon: "🏭", link: "suppliers"))
+    caption("4 suppliers · 7 brands");
+```
 
 ## Stepper
 
@@ -132,7 +148,8 @@ st.details([["Customer", "ACME Corp"], ["Contact", "Ann Lee"], ["Status", "**Act
 st.details(parseJsonString(`{"plan": "pro", "seats": 5}`));   // keys in alphabetical order
 ```
 
-Labels and values of one record, side by side (stacked on phones). Values are Markdown. A JSON
+Labels and values of one record, side by side (stacked on phones). Values are Markdown.
+`inline: true` puts the pairs in one row, a stat strip ("Suppliers: **4** Brands: **7** …"). A JSON
 object keeps no key order, so its rows are sorted by key; use the `string[2][]` form for your
 own order.
 
@@ -191,3 +208,119 @@ a path such as `/auth/reset?token=…` is copied as a full URL on the server the
 (the admin panel uses this for invite and reset links). Browsers only
 offer the clipboard API on HTTPS and localhost; on plain HTTP a fallback is used, which most
 browsers still allow after a click.
+
+## KPI with a trend
+
+<!-- wrap -->
+```d
+st.metric("Fact", "5,510 €", "+4.2%", chartData: [4.8, 5.0, 5.1, 4.9, 5.3, 5.51], caption: "was 5,288 € last month",
+    border: true);
+st.metric("Debt", "1,135 €", "-12%", deltaColor: "inverse", chartData: [1.6, 1.4, 1.1], chartType: "area");
+```
+
+`chartData` draws a small chart under the value (`chartType`: `"line"`, `"bar"`, `"area"`), in the
+theme's primary colour. `caption` adds a small line, e.g. the value it is compared with. Screen
+readers hear "Trend from … to …".
+
+## Empty state
+
+<!-- wrap -->
+```d
+st.emptyState("No unread notifications", "New alerts appear here.", "📭");
+```
+
+A dashed box for "nothing here": when a filter matches nothing, or a list is empty.
+
+## Legend
+
+<!-- wrap -->
+```d
+st.legend([LegendItem("Overdue more than 14 days", "error"), LegendItem("Overdue", "warning"),
+    LegendItem("Plan", "info", "line"), LegendItem("Fact")], "Colours");
+```
+
+Explains the colours of a table (`cellStyle`, `ColumnConfig.background`) or a chart. Colours are
+tokens (`success`, `warning`, `error`, `info`, `muted`, `primary`), hex colours, or (when null) the
+chart palette in order. Shapes are `square`, `circle`, `line` and `diamond`.
+
+## Proportion bar
+
+<!-- wrap -->
+```d
+st.proportionBar([1_135.0, 450.0, 2_100.0], ["Overdue", "Due this week", "Not due"],
+    ["error", "warning", "success"], format: "%,.0f €");
+```
+
+A bar split in proportion to the values, with a legend that shows each value and its percentage
+(which is also what screen readers read). `format` is a number format as in
+[column configuration](data-and-charts.md#column-configuration-totals-and-colours).
+
+## Feed
+
+<!-- wrap -->
+```d
+st.feed([
+    FeedItem("Payment overdue: **Initech**", "21 days past the due date.", "09:12", "error", true, null, ["Initech"]),
+    FeedItem("Sync finished", "12,431 rows.", "yesterday", "success"),
+]);
+```
+
+`FeedItem(title, body, time, type, unread, icon, badges)`: a list of notifications or alerts.
+`type` colours the edge and picks the icon; unread items have a dot and a bold title. Combine it
+with [pagination](#pagination) and a `segmentedControl("Show", ["Unread", "All"], required: true)`.
+
+## Calendar grid
+
+<!-- wrap -->
+```d
+import std.datetime : Date;
+auto rows = [
+    GridRow("acme", "ACME", null, "3 / 5 delivered", 0.6, 0.7),   // summary, progress, expected by today
+    GridRow("rocket", "Rocket", "acme"),                          // under ACME
+];
+auto items = [
+    GridItem("d1", "rocket", Date(2026, 11, 3), Date.init, "Delivery 1 · 400 €", 400, "dot", "success"),
+    GridItem("d3", "rocket", Date(2026, 11, 24), Date.init, "Delivery 3 · 900 €", 900, "dot", "primary", true),
+    GridItem("p1", "rocket", Date(2026, 11, 20), Date(2026, 11, 27), "Payment window", double.nan, null, "info"),
+];
+auto ev = st.calendarGrid(rows, items, Date(2026, 11, 1), Date(2026, 12, 31), key: "plan",
+    summaryLabel: "Delivered", expanded: 1, focus: st.queryParams.get("focus"));
+if (ev.kind == "item")
+    st.write("Clicked", ev.item, "on", ev.date.toISOExtString);
+```
+
+A schedule: one row per `GridRow`, one column per day (or week, `unit: "week"`), with items placed on
+it. Rows with a `parent` are shown under it when it is opened (`expanded:` levels open at first).
+
+**Items** (`GridItem(id, row, start, end, label, value, shape, color, outline)`):
+- a marker on its `start` day, or a span when it has an `end`;
+- `value` sizes markers relative to the largest one;
+- `shape`: `dot`, `square` or `diamond`;
+- `color`: a token (`success`, `warning`, `error`, `info`, `muted`, `primary`) or a hex colour;
+- `outline: true` draws it hollow (e.g. planned rather than done);
+- more than three markers on one day collapse into "+N".
+
+**Rows** (`GridRow(id, label, parent, summary, progress, expected)`):
+- the summary column shows `summary` text and a bar for `progress` (0–1);
+- `expected` puts a mark on that bar, e.g. how far along it should be by today.
+
+**The grid:**
+- the name and summary columns and the header stay in place while scrolling;
+- weekends are shaded, the month starts are marked, and today is highlighted (`today:` overrides
+  the date);
+- the grid opens scrolled to today, and keeps its scroll position across reruns.
+
+**Clicks** rerun the app and return a `GridEvent`, only in that run, like a button:
+
+| `ev.kind` | Clicked | Fields |
+|---|---|---|
+| `"item"` | a marker or span | `ev.item`, `ev.row`, `ev.date` |
+| `"row"` | a row's name | `ev.row` |
+| `"cell"` | an empty day (or "+N") | `ev.row`, `ev.date` |
+
+- **`focus:`** an item id: the grid scrolls to that item, opens its rows and highlights it once.
+  This suits links from notifications (`?focus=d3`).
+- **Keyboard:** one Tab stop; ←/→ move along a row, ↑/↓ to the nearest item in the next row,
+  Enter opens.
+- **Legend:** add one with [`st.legend`](#legend).
+- **Tests:** `at.trigger("plan", Json([...]))` sends a click.

@@ -1058,3 +1058,435 @@ unittest
 	at.run();
 	assert(started == 3 && finished == 3, [started, finished].to!string); // run 2 finished, then exactly one more
 }
+
+// ---------------------------------------------------------------- tables: column config, totals, cell styles, editor rules
+
+unittest
+{
+	alias C = ColumnConfig;
+	auto df = new DataFrame()
+		.addColumn("name", ["a", "b"])
+		.addColumn("amount", [5, -3])
+		.addColumn("guid", ["g1", "g2"]);
+	auto at = new AppTest((St st) {
+		st.dataframe(df, columnConfig: [
+			"amount": C.number("Amount", format: "%+d", color: "sign", group: "Money"),
+			"guid": C.hide(),
+		], totals: ["name": "Total", "amount": "sum"],
+			cellStyle: (size_t r, string c, Json v) => c == "amount" && v.get!long < 0 ? "bg:error bold" : null);
+		st.table(df, columnConfig: ["name": C.text("Name")]);
+	}).run();
+	assert(at.exceptions.length == 0, at.exceptions.to!string);
+	auto d = at.elements("dataframe")[0];
+	assert(d["config"]["amount"]["format"].get!string == "%+d" && d["config"]["amount"]["group"].get!string == "Money");
+	assert(d["config"]["guid"]["hidden"].get!bool);
+	assert(d["totals"]["name"].get!string == "Total" && d["totals"]["amount"].get!string == "sum");
+	assert(d["styles"]["1,1"].get!string == "bg:error bold" && d["styles"].length == 1);
+	assert(at.elements("table")[0]["config"]["name"]["label"].get!string == "Name");
+	// a typo in a column name is an error, not silently ignored
+	auto bad = new AppTest((St st) { st.dataframe(df, columnConfig: ["amout": C.number()]); }).run();
+	assert(bad.exceptions.length == 1 && bad.exceptions[0]["message"].get!string.canFind("amout"));
+}
+
+unittest
+{
+	// the editor keeps values its column config does not allow (the browser should not send them)
+	alias C = ColumnConfig;
+	auto df = new DataFrame()
+		.addColumn("task", ["a", "b"])
+		.addColumn("hours", [1, 2])
+		.addColumn("prio", ["low", "high"])
+		.addColumn("note", ["x", "y"]);
+	DataFrame result;
+	auto at = new AppTest((St st) {
+		result = st.dataEditor(df, key: "ed", numRows: "dynamic", columnConfig: [
+			"hours": C.number(min: 0, max: 24),
+			"prio": C.select(options: ["low", "high"], required: true),
+			"note": C.text(disabled: true),
+			"task": C.text(maxChars: 3),
+		]);
+	}).run();
+	auto id = at.widgetId("data_editor", null);
+	at.setValueById(id, parseJsonString(`{"edited": {"0": {"hours": 30, "prio": "urgent", "note": "z", "task": "toolong"},
+		"1": {"hours": 5, "prio": "low", "task": "ok"}}, "added": [{"task": "new", "hours": -1, "prio": "nope"}]}`)).run();
+	assert(at.exceptions.length == 0, at.exceptions.to!string);
+	assert(result.column!long("hours")[0 .. 2] == [1, 5], result.column!long("hours").to!string);
+	assert(result.column!string("prio")[0 .. 2] == ["low", "low"]);
+	assert(result.column!string("note")[0] == "x" && result.column!string("task")[0 .. 2] == ["a", "ok"]);
+	// an added row may be incomplete, but invalid values are dropped
+	assert(result.length == 3 && result.cell(2, 1).type == Json.Type.null_ && result.cell(2, 2).type == Json.Type.null_);
+}
+
+// ---------------------------------------------------------------- tables: selection and tree rows
+
+unittest
+{
+	auto df = new DataFrame()
+		.addColumn("mgr", ["Ann", "Ann", "Bob"])
+		.addColumn("name", ["x", "y", "z"])
+		.addColumn("id", ["i1", "i2", "i3"]);
+	TableSelection sel, multiSel, cell;
+	auto at = new AppTest((St st) {
+		sel = st.dataframe(df, onSelect: "rerun", rowKey: "id", key: "one", groupBy: ["mgr"], totals: ["name": "count"]);
+		multiSel = st.dataframe(df, onSelect: "rerun", selectionMode: "multi-row", key: "many");
+		cell = st.dataframe(df, onSelect: "rerun", selectionMode: "single-cell", key: "cell");
+		st.dataframe(df); // not a widget
+	}).run();
+	assert(at.exceptions.length == 0, at.exceptions.to!string);
+	assert(sel.empty && multiSel.empty);
+	auto e = at.elements("dataframe");
+	assert(e[0]["groupBy"][0].get!string == "mgr" && e[0]["selectionMode"].get!string == "single-row" && e[0]["id"].get!string == "k:one");
+	assert(e[3]["id"].type == Json.Type.undefined);
+	// a row by index: the key comes along; single-row keeps one
+	at.selectRows("one", 2, 0).run();
+	assert(sel.rows == [2] && sel.keys == [Json("i3")], sel.rows.to!string);
+	// with rowKey, keys win over indices (stable when the frame is filtered or reordered)
+	at.setValueById("k:one", parseJsonString(`{"rows": [0], "keys": ["i2"]}`)).run();
+	assert(sel.rows == [1]);
+	// a group of the tree
+	at.selectGroup("one", "Bob").run();
+	assert(sel.group == ["Bob"] && sel.rows.length == 0);
+	at.selectGroup("one", "Nobody").run();
+	assert(sel.empty);
+	// multi-row: out-of-range rows are dropped, duplicates removed
+	at.selectRows("many", 0, 2, 2, 9).run();
+	assert(multiSel.rows == [0, 2]);
+	// single cell
+	at.setValueById("k:cell", parseJsonString(`{"cells": [[1, "name"]]}`)).run();
+	assert(cell.cells.length == 1 && cell.cells[0].row == 1 && cell.cells[0].column == "name");
+	at.setValueById("k:cell", parseJsonString(`{"cells": [[1, "nope"]]}`)).run();
+	assert(cell.cells.length == 0);
+	auto bad = new AppTest((St st) { st.dataframe(df, onSelect: "rerun", selectionMode: "all"); }).run();
+	assert(bad.exceptions.length == 1);
+	auto bad2 = new AppTest((St st) { st.dataframe(df, groupBy: ["nope"]); }).run();
+	assert(bad2.exceptions.length == 1);
+}
+
+// ---------------------------------------------------------------- context, widget behaviours, navigation, small elements, lazy downloads
+
+unittest
+{
+	RequestContext seen;
+	auto at = new AppTest((St st) { seen = st.context; });
+	RequestContext c;
+	c.headers = ["user-agent": "Test/1.0"];
+	c.cookies = ["airop_token": "abc"];
+	c.ip = "10.0.0.7";
+	c.locale = "ru-RU";
+	at.setContext(c).run();
+	assert(seen.header("User-Agent") == "Test/1.0" && seen.cookie("airop_token") == "abc" && seen.cookie("nope") is null);
+	assert(seen.ip == "10.0.0.7" && seen.locale == "ru-RU");
+	// the browser reports language, time zone and URL with its messages
+	at.sess.handleClientMessage(parseJsonString(`{"type": "rerun", "client": {"timezone": "Asia/Almaty", "timezoneOffset": 300,
+		"url": "http://h/x", "locale": "kk-KZ"}}`));
+	at.run();
+	assert(seen.timezone == "Asia/Almaty" && seen.timezoneOffset == 300 && seen.url == "http://h/x" && seen.locale == "kk-KZ");
+}
+
+unittest
+{
+	// required segmented control / pills: always one option; null from the browser keeps it
+	string seg, pill;
+	auto at = new AppTest((St st) {
+		seg = st.segmentedControl("View", ["A", "B"], key: "v", required: true);
+		pill = st.pills("Kind", ["x", "y"], 1, required: true);
+	}).run();
+	assert(seg == "A" && pill == "y");
+	assert(at.widget("segmented_control", "View")["required"].get!bool);
+	at.setValue("segmented_control", "View", Json(null)).run();
+	assert(seg == "A");
+	at.setValue("segmented_control", "View", Json(1)).run();
+	assert(seg == "B");
+	at.setValue("segmented_control", "View", Json(null)).run();
+	assert(seg == "A"); // the default again, never nothing
+}
+
+unittest
+{
+	// keyed widgets keep their value while they are not drawn (another page); resetWidgets forgets it
+	bool draw = true, reset;
+	string name;
+	auto at = new AppTest((St st) {
+		if (reset) { st.resetWidgets("name"); reset = false; }
+		if (draw) name = st.textInput("Name", "default", key: "name");
+	}).run();
+	at.setValue("text_input", "Name", Json("Ann")).run();
+	assert(name == "Ann");
+	draw = false;
+	at.run();
+	draw = true;
+	at.run();
+	assert(name == "Ann"); // remembered across the run without the widget
+	reset = true;
+	at.run();
+	assert(name == "default");
+	// a toast shown before st.rerun() still reaches the browser
+	auto t = new AppTest((St st) {
+		if (st.button("Save")) { st.toast("Saved"); st.rerun(); }
+	}).run();
+	t.click("Save").run();
+	assert(t.messages("toast").length == 1 && t.messages("toast")[0]["body"].get!string == "Saved");
+}
+
+unittest
+{
+	// small elements: their JSON and their checks
+	auto at = new AppTest((St st) {
+		st.metric("Fact", "5,510 €", "+4%", chartData: [1.0, 2, 3], chartType: "area", caption: "was 5,288");
+		st.emptyState("Nothing", "Try another filter.");
+		st.legend([LegendItem("Late", "error", "circle"), LegendItem("On time")], "Colours");
+		st.proportionBar([1.0, 3.0], ["a", "b"], ["error", "#00ff00"], format: "%d");
+		st.feed([FeedItem("Overdue", "**21** days", "09:12", "error", true, null, ["ACME"])]);
+		st.details([["Suppliers", "4"]], inline: true);
+		st.card("Suppliers", link: "suppliers").caption("x");
+	}).run();
+	assert(at.exceptions.length == 0, at.exceptions.to!string);
+	auto m = at.elements("metric")[0];
+	assert(m["chartData"].length == 3 && m["chartType"].get!string == "area" && m["caption"].get!string == "was 5,288");
+	assert(at.elements("empty_state")[0]["title"].get!string == "Nothing");
+	assert(at.elements("legend")[0]["items"][1]["shape"].get!string == "square");
+	assert(at.elements("proportion_bar")[0]["colors"][1].get!string == "#00ff00");
+	auto f = at.elements("feed")[0]["items"][0];
+	assert(f["unread"].get!bool && f["badges"][0].get!string == "ACME" && f["type"].get!string == "error");
+	assert(at.elements("details")[0]["inline"].get!bool);
+	assert(at.elements("block").filter!(b => b["block"].get!string == "card").front["link"].get!string == "suppliers");
+	foreach (bad; [
+		(St st) { st.legend([LegendItem("x", null, "star")]); },
+		(St st) { st.proportionBar([1.0], ["a", "b"]); },
+		(St st) { st.proportionBar([-1.0], ["a"]); },
+		(St st) { st.feed([FeedItem("x", null, null, "purple")]); },
+		(St st) { st.metric("x", "1", chartType: "pie"); },
+		(St st) { st.navigation([Page((St s) {}, "A")], sections: "folded"); },
+	])
+		assert(new AppTest(bad).run().exceptions.length == 1);
+	// navigation: badges and collapsible sections reach the browser
+	auto nav = new AppTest((St st) {
+		st.navigation([Page((St s) {}, "Home"), Page((St s) {}, "Inbox", section: "Mail", badge: "3")], sections: "collapsible").run(st);
+	}).run();
+	auto msg = nav.messages("navigation")[0];
+	assert(msg["sections"].get!string == "collapsible" && msg["pages"][1]["badge"].get!string == "3");
+}
+
+unittest
+{
+	// downloads built on click: the button links to a token; the build runs only when asked
+	int built;
+	bool draw = true;
+	auto at = new AppTest((St st) {
+		if (draw)
+			st.downloadButton("Export", () { built++; return "a,b\n1,2\n"; }, "x.csv", "text/csv");
+	}).run();
+	assert(built == 0);
+	auto el = at.elements("download_button")[0];
+	assert(el["lazy"].get!bool);
+	auto url = el["url"].get!string;
+	import std.algorithm : startsWith;
+	assert(url.startsWith("_stcore/download/"));
+	auto tok = url["_stcore/download/".length .. $];
+	auto d = at.sess.lazyDownload(tok);
+	assert(d !is null && cast(string) d.build() == "a,b\n1,2\n" && built == 1 && d.fileName == "x.csv");
+	at.run();
+	assert(at.elements("download_button")[0]["url"].get!string == url); // the same link on every run
+	draw = false;
+	at.run();
+	assert(at.sess.lazyDownload(tok) is null); // gone with the button
+}
+
+// ---------------------------------------------------------------- calendar grid, nested dialogs
+
+unittest
+{
+	import std.datetime : Date;
+	GridEvent ev;
+	auto rows = [GridRow("acme", "ACME", null, "1 / 2", 0.5, 0.6), GridRow("rocket", "Rocket", "acme")];
+	auto items = [GridItem("d1", "rocket", Date(2026, 11, 3), Date.init, "Delivery", 400),
+		GridItem("p1", "rocket", Date(2026, 11, 5), Date(2026, 11, 9), "Payments")];
+	auto at = new AppTest((St st) {
+		ev = st.calendarGrid(rows, items, Date(2026, 11, 1), Date(2026, 11, 30), key: "plan", today: Date(2026, 11, 18),
+			focus: "d1", expanded: 1);
+	}).run();
+	assert(at.exceptions.length == 0, at.exceptions.to!string);
+	auto el = at.elements("calendar_grid")[0];
+	assert(el["rows"].length == 2 && el["items"][1]["end"].get!string == "2026-11-09" && el["focus"].get!string == "d1");
+	assert(el["today"].get!string == "2026-11-18" && el["expanded"].get!long == 1);
+	assert(!ev);
+	at.trigger("plan", parseJsonString(`{"kind": "item", "item": "d1", "row": "rocket"}`)).run();
+	assert(ev.kind == "item" && ev.item == "d1" && ev.date == Date(2026, 11, 3));
+	at.run();
+	assert(!ev); // like a button: only in the run of the click
+	at.trigger("plan", parseJsonString(`{"kind": "cell", "row": "acme", "date": "2026-11-20"}`)).run();
+	assert(ev.kind == "cell" && ev.row == "acme" && ev.date == Date(2026, 11, 20));
+	at.trigger("plan", parseJsonString(`{"kind": "item", "item": "nope", "row": "rocket"}`)).run();
+	assert(!ev);
+	auto bad = new AppTest((St st) {
+		st.calendarGrid([GridRow("a", "A")], [GridItem("x", "a", Date(2026, 1, 1), Date.init, null, double.nan, "star")],
+			Date(2026, 1, 1), Date(2026, 1, 31));
+	}).run();
+	assert(bad.exceptions.length == 1);
+}
+
+unittest
+{
+	// a dialog opened while another dialog's body runs nests in it, also when the outer one reruns alone
+	bool inner = true;
+	int innerRuns;
+	auto at = new AppTest((St st) {
+		st.dialog("Outer", (St d) {
+			d.text("outer body");
+			auto b = d.button("Toggle");
+			if (inner)
+				st.dialog("Inner", (St e) { innerRuns++; e.text("inner body"); });
+		});
+	}).run();
+	assert(at.exceptions.length == 0, at.exceptions.to!string);
+	auto dialogs = at.elements("block").filter!(b => b["block"].get!string == "dialog").array;
+	assert(dialogs.length == 2 && dialogs[1]["title"].get!string == "Inner");
+	auto paths = at.paths("dialog");
+	assert(paths.length == 2 && paths[1].length > paths[0].length && paths[1][0 .. paths[0].length] == paths[0], paths.to!string);
+	// a click in the outer dialog reruns it alone; the inner one is drawn inside it again
+	at.click("Toggle").run();
+	auto again = at.paths("dialog");
+	assert(again == paths && innerRuns == 2, again.to!string);
+}
+
+unittest
+{
+	// a dialog opened from a session value: onDismiss tells the app when the user closes it
+	import std.exception : assertThrown;
+	int dismissed;
+	auto at = new AppTest((St st) {
+		if (st.button("Edit"))
+			st.session["editing"] = true;
+		if (st.session.get!bool("editing", false))
+			st.dialog("Edit item", (St d) { d.text("form"); }, onDismiss: { dismissed++; st.session.remove("editing"); });
+		st.dialog("Plain", (St d) { d.text("x"); }, key: "plain");
+	}).run();
+	assert(at.paths("dialog").length == 1);
+	assertThrown(at.dismissDialog("Plain")); // no onDismiss: the server never hears of it
+	at.click("Edit").run();
+	assert(at.paths("dialog").length == 2);
+	at.dismissDialog("Edit item").run();
+	assert(dismissed == 1 && !at.session.has("editing"));
+	assert(at.paths("dialog").length == 1); // stays closed on later runs
+	at.run();
+	assert(at.paths("dialog").length == 1 && dismissed == 1);
+}
+
+unittest
+{
+	// with rowKey, the kept selection follows the keys: removing the selected rows empties it,
+	// instead of selecting whatever rows now have those numbers
+	string[] ids = ["a", "b", "c", "d"];
+	TableSelection sel;
+	auto at = new AppTest((St st) {
+		sel = st.dataframe(new DataFrame().addColumn("id", ids), onSelect: "rerun", selectionMode: "multi-row",
+			rowKey: "id", key: "t");
+	}).run();
+	at.selectRows("t", 0, 1).run();
+	assert(sel.keys == [Json("a"), Json("b")]);
+	ids = ["c", "d"]; // a and b are gone (e.g. completed and filtered out)
+	at.run();
+	assert(sel.empty, sel.rows.to!string);
+	ids = ["d", "x", "b"];
+	at.selectRows("t", 2).run(); // "b"
+	ids = ["b", "d"];
+	at.run();
+	assert(sel.rows == [0] && sel.keys == [Json("b")]); // follows "b" to its new row
+}
+
+unittest
+{
+	// crafted selections (huge lists of rows or keys) cost time linear in the message, and never
+	// select more rows than the frame has
+	import std.datetime.stopwatch : StopWatch, AutoStart;
+	import std.range : iota;
+	auto ids = iota(5000).map!(i => "id" ~ i.to!string).array;
+	TableSelection sel;
+	auto at = new AppTest((St st) {
+		sel = st.dataframe(new DataFrame().addColumn("id", ids), onSelect: "rerun", selectionMode: "multi-row",
+			rowKey: "id", key: "t");
+	}).run();
+	auto ks = Json.emptyArray;
+	foreach (i; 0 .. 200_000)
+		ks.appendArrayElement(Json(i % 3 ? "nope" : "id" ~ (i % 5000).to!string));
+	auto sw = StopWatch(AutoStart.yes);
+	at.setValueById("k:t", Json(["keys": ks])).run();
+	assert(sw.peek.total!"msecs" < 1500, sw.peek.toString);
+	assert(sel.rows.length <= 5000 && sel.rows.length > 0);
+	auto rs = Json.emptyArray;
+	foreach (i; 0 .. 200_000)
+		rs.appendArrayElement(Json(i % 5000));
+	TableSelection plain;
+	auto at2 = new AppTest((St st) {
+		plain = st.dataframe(new DataFrame().addColumn("id", ids), onSelect: "rerun", selectionMode: "multi-row", key: "t");
+	}).run();
+	sw.reset();
+	at2.setValueById("k:t", Json(["rows": rs])).run();
+	assert(sw.peek.total!"msecs" < 1500, sw.peek.toString);
+	assert(plain.rows.length == 5000 && plain.rows[0 .. 3] == [0, 1, 2]);
+}
+
+unittest
+{
+	// dataEditor(maxRows:): rows added beyond the limit are ignored
+	DataFrame result;
+	auto at = new AppTest((St st) {
+		result = st.dataEditor(new DataFrame().addColumn("a", [1, 2]), key: "ed", numRows: "dynamic", maxRows: 3);
+	}).run();
+	assert(at.elements("data_editor")[0]["maxRows"].get!long == 3);
+	auto added = Json.emptyArray;
+	foreach (i; 0 .. 1000)
+		added.appendArrayElement(Json(["a": Json(i)]));
+	at.setValueById("k:ed", Json(["added": added])).run();
+	assert(result.length == 3);
+	at.setValueById("k:ed", Json(["added": added, "deleted": Json([Json(0)])])).run();
+	assert(result.length == 3); // one deleted, two added
+}
+
+unittest
+{
+	// a keyed table without rowKey: a selection made on other rows is dropped (indices would point elsewhere)
+	auto big = new DataFrame().addColumn("a", [1, 2, 3, 4]);
+	auto small = new DataFrame().addColumn("a", [1, 2]);
+	bool useSmall;
+	TableSelection sel;
+	auto at = new AppTest((St st) { sel = st.dataframe(useSmall ? small : big, onSelect: "rerun", key: "t"); }).run();
+	at.setValueById("k:t", parseJsonString(`{"rows": [1], "n": 4}`)).run();
+	assert(sel.rows == [1]);
+	at.run();
+	assert(sel.rows == [1]); // same rows: kept
+	useSmall = true;
+	at.run();
+	assert(sel.empty, sel.rows.to!string);
+	assert(at.elements("dataframe")[0]["memoKey"].get!string == "t:t");
+}
+
+
+// ---------------------------------------------------------------- cacheData hands out copies (shared by all sessions)
+
+DataFrame sharedFrame(string p) { return new DataFrame().addColumn("a", [1, 2, 3]); }
+
+unittest
+{
+	// one session adds rows to its copy; the cached frame and other sessions do not see them
+	size_t lenA, lenB;
+	bool add;
+	auto a = new AppTest((St st) {
+		auto df = cacheData!sharedFrame("x");
+		foreach (row; st.session.get!(Json[][])("added"))
+			df.appendRow(row);
+		if (add)
+		{
+			st.session["added"] = st.session.get!(Json[][])("added") ~ [[Json(9)]];
+			add = false;
+			st.rerun();
+		}
+		lenA = df.length;
+	});
+	auto b = new AppTest((St st) { lenB = cacheData!sharedFrame("x").length; });
+	add = true;
+	a.run();
+	b.run();
+	assert(lenA == 4 && lenB == 3, [lenA, lenB].to!string);
+	assert(cacheData!sharedFrame("x") !is cacheData!sharedFrame("x"));
+}

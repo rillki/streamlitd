@@ -166,6 +166,14 @@ test("other example apps", async ({ browser }) => {
     findings.push(...(await audit(page, `widgets:${design}/${mode} / tree select open`)));
     await page.context().close();
   }
+  // examples/business: KPI trends, proportion bar, link cards, tree table with grouped headers, feed, folding sidebar
+  for (const design of ["streamlit", "terminal", "win95", "brutalist", "glass"]) for (const mode of ["light", "dark"]) {
+    for (const p of ["/", "/suppliers", "/inbox", "/order-plan?focus=d3"]) {
+      const page = await openWith(browser, "business", { scheme: "streamlit", design, mode }, null, p);
+      findings.push(...(await audit(page, `business${p}:${design}/${mode}`)));
+      await page.context().close();
+    }
+  }
   // the app-defined design and config scheme of examples/custom
   for (const mode of ["light", "dark"]) {
     const page = await openWith(browser, "custom", { scheme: "dusk", design: "neon", mode, basis: "acme/streamlit/auto" });
@@ -194,7 +202,7 @@ test("login, sign-up and account pages, and the admin panel", async ({ browser }
     const page = await ctx.newPage();
     await page.goto(url("auth", "/auth/login"));
     await page.getByLabel("Username").fill("alice");
-    await page.getByLabel("Password").fill("secret123");
+    await page.getByLabel("Password").fill("streamlitd-demo");
     await page.getByRole("button", { name: "Sign in" }).click();
     await waitIdle(page, 1);
     await page.goto(url("auth", "/auth/account"));
@@ -237,8 +245,87 @@ test("header controls: the ⋮ menu and the appearance panel opened from the sid
   expect(findings, summary(findings)).toEqual([]);
 });
 
+// The larger examples (examples/helpdesk, ...): every page, plus open states (a selected row, dialogs).
+// `user` signs in first; `states` run on one page and are audited after each step.
+const bigApps = [
+  { app: "helpdesk", user: "alice", pages: ["/", "/tickets", "/customers", "/users"], states: [
+    ["/tickets", "ticket selected", async (page) => { await page.getByTestId("st-dataframe").locator("tbody tr").first().click(); await waitIdle(page, 2); }],
+    ["/tickets", "edit dialog", async (page) => { await page.getByRole("button", { name: "Edit…" }).click(); await page.getByRole("dialog").waitFor(); }],
+    ["/tickets", "nested confirm", async (page) => { await page.getByRole("button", { name: "Close ticket…" }).click(); await expect(page.getByRole("dialog")).toHaveCount(2); }],
+  ] },
+  { app: "planning", pages: ["/", "/plan-vs-fact", "/deliveries", "/import"], states: [
+    ["/", "review dialog", async (page) => {
+      const c = page.getByTestId("st-data-editor").getByLabel("Dec row 1"); await c.fill("1234"); await c.press("Enter"); await waitIdle(page, 2);
+      await page.getByRole("button", { name: "Review & save" }).click(); await page.getByRole("dialog").waitFor(); }],
+    ["/deliveries", "delivery dialog", async (page) => { await page.locator("[data-item]").first().click(); await page.getByRole("dialog").waitFor(); }],
+    ["/import", "match step", async (page) => { await page.getByRole("button", { name: "Use the sample file" }).click(); await page.getByText("Every supplier name is known.").or(page.getByText("Some names in the file differ")).waitFor(); }],
+    ["/import", "review step", async (page) => { await page.getByRole("button", { name: "Next" }).click(); await page.getByTestId("st-dataframe").waitFor(); }],
+  ] },
+  { app: "todo", signUp: true, pages: ["/", "/list-work", "/upcoming", "/lists"], states: [
+    ["/list-work", "edit dialog", async (page) => { await page.getByRole("button", { name: "Edit" }).first().click(); await page.getByRole("dialog").waitFor(); }],
+    ["/list-work", "nested delete", async (page) => { await page.getByRole("button", { name: "Delete…" }).click(); await expect(page.getByRole("dialog")).toHaveCount(2); }],
+    ["/list-home", "bulk table", async (page) => { await page.getByText("Select several").click(); await page.getByTestId("st-dataframe").waitFor(); await page.getByLabel("Select row 0").check(); await waitIdle(page, 2); }],
+  ] },
+  { app: "gantt", pages: ["/", "/tasks"], states: [
+    ["/", "day scale", async (page) => { await page.getByRole("radiogroup", { name: "Scale" }).getByRole("button", { name: "day" }).click(); await waitIdle(page, 2); }],
+    ["/", "edit dialog", async (page) => { await page.locator('[data-item="t5"]').first().click(); await page.getByRole("dialog").waitFor(); }],
+    ["/", "nested delete", async (page) => { await page.getByRole("button", { name: "Delete…" }).click(); await expect(page.getByRole("dialog")).toHaveCount(2); }],
+  ] },
+  { app: "monitor", pages: ["/", "/services", "/alerts"], states: [
+    ["/services", "service selected", async (page) => { await page.getByTestId("st-dataframe").locator("tbody tr").nth(2).click(); await page.getByTestId("st-vega-lite").first().waitFor(); }],
+    ["/alerts", "rules tab", async (page) => { await page.getByRole("tab", { name: "Rules" }).click(); await page.getByTestId("st-data-editor").waitFor(); }],
+  ] },
+];
+
+async function signIn(page, app, user) {
+  await page.goto(url(app, "/"));
+  await page.getByLabel("Username").fill(user);
+  await page.getByLabel("Password").fill("streamlitd-demo");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).not.toHaveURL(/\/auth\/login/);
+  await waitIdle(page, 1);
+}
+
+test("larger examples: pages and open states", async ({ browser }) => {
+  test.setTimeout(300000);
+  const findings = [];
+  for (const b of bigApps) for (const design of ["streamlit", "terminal", "win95", "glass"]) for (const mode of ["light", "dark"]) {
+    const tag = `${b.app}:${design}/${mode}`;
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await ctx.addInitScript((a) => localStorage.setItem("streamlitd-appearance", JSON.stringify(a)),
+      { basis: "streamlit/streamlit/auto", scheme: "streamlit", design, mode });
+    const page = await ctx.newPage();
+    if (b.user) await signIn(page, b.app, b.user);
+    if (b.signUp) {
+      await page.goto(url(b.app, "/auth/register"));
+      await page.getByLabel("Username").fill("audit" + Date.now().toString(36) + Math.floor(Math.random() * 1e4));
+      await page.getByLabel("Password", { exact: true }).fill("streamlitd-demo");
+      await page.getByLabel("Repeat the password").fill("streamlitd-demo");
+      await page.getByRole("button", { name: "Create account" }).click();
+      await expect(page).not.toHaveURL(/\/auth\//);
+      await waitIdle(page, 1);
+    }
+    for (const p of b.pages) {
+      await page.goto(url(b.app, p));
+      await waitIdle(page, 1);
+      await page.waitForTimeout(250);
+      findings.push(...(await audit(page, `${tag} ${p}`)));
+    }
+    let at = null;
+    for (const [p, name, act] of b.states || []) {
+      if (p !== at) { await page.goto(url(b.app, p)); await waitIdle(page, 1); at = p; }
+      await act(page);
+      await page.waitForTimeout(200);
+      findings.push(...(await audit(page, `${tag} ${p} / ${name}`)));
+    }
+    await ctx.close();
+  }
+  report("examples", findings);
+  expect(findings, summary(findings)).toEqual([]);
+});
+
 test("no native browser pop-up controls anywhere", async ({ browser }) => {
-  for (const app of ["hello", "widgets", "data", "themes", "fragments", "multipage", "extras", "tutorial", "custom"]) {
+  for (const app of ["hello", "widgets", "data", "themes", "fragments", "multipage", "extras", "tutorial", "custom", "business", "planning", "gantt", "monitor"]) {
     const page = await openWith(browser, app, { scheme: "streamlit", design: "streamlit", mode: "light" });
     const native = await page.evaluate(() => document.querySelectorAll("select, datalist, input[type=date], input[type=time], input[type=color], input[type=datetime-local], input[type=month], input[type=week]").length);
     expect(native, app).toBe(0);

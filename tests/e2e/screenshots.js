@@ -15,8 +15,26 @@ const apps = { hello: 8801, widgets: 8802, data: 8803, multipage: 8804, themes: 
 const procs = [];
 let browser = null;
 
-function start(name, port) {
-  const p = spawn(`./${name}`, ["--port", String(port), "--host", "127.0.0.1", "--quiet"], { cwd: path.join(root, "examples", name), stdio: "ignore" });
+// the larger examples, each with fresh demo data and a fixed "today" (docs/examples.md)
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "streamlitd-shots-"));
+const bigApps = {
+  helpdesk: [8818, { HELPDESK_DATA: tmp + "/helpdesk.json", STREAMLITD_AUTH_USERS_FILE: tmp + "/hd-users.json" }],
+  planning: [8819, { PLANNING_DATA: tmp + "/planning.json", PLANNING_TODAY: "2026-11-18" }],
+  monitor: [8820, { MONITOR_TICK_MS: "300", MONITOR_SLOW_MS: "300" }],
+  todo: [8821, { TODO_DATA: tmp + "/todo.json", TODO_TODAY: "2026-11-18", STREAMLITD_AUTH_USERS_FILE: tmp + "/todo-users.json" }],
+  gantt: [8822, { GANTT_DATA: tmp + "/gantt.json", GANTT_TODAY: "2026-11-18" }],
+  // more examples for examples/README.md
+  accounts: [8823, { STREAMLITD_AUTH_USERS_FILE: tmp + "/acc-users.json" }],
+  api: [8824, {}],
+  custom: [8825, {}],
+  business: [8826, {}],
+  prod: [8827, {}],
+};
+const bigBase = { prod: "/app" };
+
+function start(name, port, env = {}) {
+  const p = spawn(`./${name}`, ["--port", String(port), "--host", "127.0.0.1", "--quiet"],
+    { cwd: path.join(root, "examples", name), stdio: "ignore", env: Object.assign({}, process.env, env) });
   procs.push(p);
 }
 async function waitHealth(port, base = "") {
@@ -36,11 +54,15 @@ function chromePath() {
   return undefined;
 }
 
-const only = process.env.ONLY; // ONLY=tutorial | data | themes regenerates a subset
+const only = process.env.ONLY; // ONLY=tutorial | data | themes | examples regenerates a subset
 
 (async () => {
   for (const [n, p] of Object.entries(apps)) start(n, p);
   for (const p of Object.values(apps)) await waitHealth(p);
+  if (!only || only === "examples") {
+    for (const [n, [p, env]] of Object.entries(bigApps)) { start(n, p, env); apps[n] = p; }
+    for (const [n, [p]] of Object.entries(bigApps)) await waitHealth(p, bigBase[n] || "");
+  }
   browser = await chromium.launch({ executablePath: chromePath() });
 
   async function page(app, urlPath = "/", opts = {}) {
@@ -73,6 +95,7 @@ const only = process.env.ONLY; // ONLY=tutorial | data | themes regenerates a su
   if (only === "tutorial") return tutorialShots();
   if (only === "data") return dataShots();
   if (only === "themes") return themeShots();
+  if (only === "examples") return exampleShots();
   // hello
   p = await page("hello");
   await rerun(p, async () => { await p.getByLabel("Your name").fill("Kirill"); await p.getByLabel("Your name").press("Enter"); });
@@ -194,6 +217,75 @@ const only = process.env.ONLY; // ONLY=tutorial | data | themes regenerates a su
   await shot(p, "login");
 
   await tutorialShots();
+  await exampleShots();
+
+  // the larger examples (docs/examples.md)
+  async function exampleShots() {
+  const ready = (pg) => pg.waitForFunction(() => +(document.body.dataset.runs || 0) >= 1 && document.body.dataset.running === "0");
+  // helpdesk: sign in on the login page first
+  let ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, deviceScaleFactor: 1 });
+  p = await ctx.newPage();
+  await p.goto(`http://127.0.0.1:${apps.helpdesk}/tickets`);
+  await p.getByLabel("Username").fill("alice");
+  await p.getByLabel("Password").fill("streamlitd-demo");
+  await p.getByRole("button", { name: "Sign in" }).click();
+  await p.waitForURL(/tickets/);
+  await ready(p);
+  await rerun(p, () => p.getByTestId("st-dataframe").locator("tbody tr").nth(1).locator("td").first().click());
+  await shot(p, "example-helpdesk", { wait: 800 });
+
+  p = await page("planning", "/plan-vs-fact", { height: 860 });
+  await p.getByTestId("st-dataframe").getByRole("button", { name: "Expand ACME" }).click();
+  await rerun(p, () => p.getByTestId("st-dataframe").locator("tr", { hasText: "Rocket" }).click());
+  await p.waitForSelector("[data-testid=st-vega-lite][data-rendered]");
+  await shot(p, "example-planning", { wait: 1000 });
+
+  p = await page("planning", "/deliveries", { height: 860 });
+  await shot(p, "example-deliveries", { wait: 800 });
+
+  // todo: sign up a user
+  ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, deviceScaleFactor: 1 });
+  p = await ctx.newPage();
+  await p.goto(`http://127.0.0.1:${apps.todo}/auth/register`);
+  await p.getByLabel("Username").fill("ann");
+  await p.getByLabel("Password", { exact: true }).fill("streamlitd-demo");
+  await p.getByLabel("Repeat the password").fill("streamlitd-demo");
+  await p.getByRole("button", { name: "Create account" }).click();
+  await p.waitForURL((u) => !u.pathname.startsWith("/auth/"));
+  await ready(p);
+  await shot(p, "example-todo", { wait: 800 });
+
+  p = await page("gantt", "/", { height: 900 });
+  await shot(p, "example-gantt", { wait: 800 });
+
+  p = await page("monitor", "/", { height: 860, appearance: dark() });
+  await p.waitForSelector("[data-testid=st-vega-lite][data-rendered]");
+  await shot(p, "example-monitor", { wait: 1500 });
+
+  // accounts: the first sign-up (the demo login) becomes the admin; its users page
+  ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, deviceScaleFactor: 1 });
+  p = await ctx.newPage();
+  await p.goto(`http://127.0.0.1:${apps.accounts}/auth/register`);
+  await p.getByLabel("Username").fill("alice");
+  await p.getByLabel("Full name").fill("Alice");
+  await p.getByLabel("Password", { exact: true }).fill("streamlitd-demo");
+  await p.getByLabel("Repeat the password").fill("streamlitd-demo");
+  await p.getByRole("button", { name: "Create account" }).click();
+  await p.waitForURL((u) => !u.pathname.startsWith("/auth/"));
+  await ready(p);
+  await p.goto(`http://127.0.0.1:${apps.accounts}/admin`);
+  await ready(p);
+  await shot(p, "example-accounts", { wait: 800 });
+
+  p = await page("api", "/", { height: 760 });
+  await shot(p, "example-api");
+  p = await page("custom", "/", { height: 860 });
+  await shot(p, "example-custom", { wait: 1000 });
+  p = await page("business", "/suppliers", { height: 760 });
+  await shot(p, "example-business", { wait: 800 });
+  p = await page("prod", "/app/", { height: 700 });
+  await shot(p, "example-prod");
+  }
 
   async function tutorialShots() {
   p = await page("tutorial", "/", { height: 860 });

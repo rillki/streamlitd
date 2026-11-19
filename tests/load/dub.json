@@ -1,0 +1,8 @@
+{
+	"name": "loadapp",
+	"description": "The app the load test (load.mjs) drives",
+	"targetType": "executable",
+	"dependencies": { "streamlitd": { "path": "../.." } },
+	"sourcePaths": ["."],
+	"importPaths": ["."]
+}

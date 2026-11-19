@@ -55,7 +55,10 @@ mixin template AccountElements()
 		import std.array : array, join;
 		import streamlitd.accounts : AccountError, Registration, registrationName, StoredUser;
 		import streamlitd.useradmin : shortTime;
+		import streamlitd.text : escapeMarkdown;
 		auto acc = accounts;
+		// usernames come from sign-up forms and SSO providers: shown as text, never as Markdown
+		auto md = (string s) => escapeMarkdown(s);
 		if (!user.isAdmin)
 		{
 			error("Only administrators can manage users.", "🔒");
@@ -107,23 +110,23 @@ mixin template AccountElements()
 						if (cols[0].button("Save roles", k("save-roles"), null, null, roles == u.roles, "primary"))
 						{
 							acc.setRoles(u.username, roles);
-							done("Roles of " ~ u.username ~ " saved");
+							done("Roles of " ~ md(u.username) ~ " saved");
 						}
 						if (u.pending && cols[1].button("Approve", k("approve"), null, null, false, "primary"))
 						{
 							acc.approve(u.username);
-							done(u.username ~ " can sign in now");
+							done(md(u.username) ~ " can sign in now");
 						}
 						if (!u.pending && cols[1].button(u.disabled ? "Enable" : "Disable", k("disable"), self ? "You cannot disable yourself" : null,
 							null, self))
 						{
 							acc.setDisabled(u.username, !u.disabled);
-							done(u.username ~ (u.disabled ? " enabled" : " disabled; their logins ended"));
+							done(md(u.username) ~ (u.disabled ? " enabled" : " disabled; their logins ended"));
 						}
 						if (cols[2].button("Log out everywhere", k("logout"), "End this user's logins on every device"))
 						{
 							acc.logoutEverywhere(u.username);
-							done("Logins of " ~ u.username ~ " ended");
+							done("Logins of " ~ md(u.username) ~ " ended");
 						}
 						if (!u.provider.length)
 						{
@@ -132,7 +135,7 @@ mixin template AccountElements()
 							auto link = session.get!string(k("link:" ~ u.username), null);
 							if (link.length)
 							{
-								info("Send this link to **" ~ u.username ~ "**. It works once, for 24 hours, and lets them set a new password.");
+								info("Send this link to **" ~ md(u.username) ~ "**. It works once, for 24 hours, and lets them set a new password.");
 								code(link, "text");
 								copyButton(link, "Copy link", "📋", null, true);
 							}
@@ -144,11 +147,11 @@ mixin template AccountElements()
 						{
 							acc.deleteUser(u.username);
 							session.remove(k("user"));
-							done(u.username ~ " deleted");
+							done(md(u.username) ~ " deleted");
 						}
 					}
 					catch (AccountError e)
-						error(e.msg);
+						error(md(e.msg)); // messages quote what was typed
 				}
 			}
 			else
@@ -170,10 +173,10 @@ mixin template AccountElements()
 				try
 				{
 					auto u = acc.createUser(uname, pw, name, email, roles);
-					success("Created **" ~ u.username ~ "**. They can sign in now.");
+					success("Created **" ~ md(u.username) ~ "**. They can sign in now.");
 				}
 				catch (AccountError e)
-					error(e.msg);
+					error(md(e.msg)); // messages quote what was typed
 			}
 		}
 

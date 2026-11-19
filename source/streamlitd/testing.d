@@ -13,7 +13,7 @@ import std.conv : to;
 import std.functional : toDelegate;
 import vibe.data.json;
 
-import streamlitd.delta : St;
+import streamlitd.delta : St, RequestContext;
 import streamlitd.session;
 import streamlitd.errors;
 import streamlitd.util;
@@ -167,6 +167,71 @@ final class AppTest
 			r.appendArrayElement(Json(x));
 		sess.user = Json(["sub": Json(username), "username": Json(username), "name": Json(name.length ? name : username),
 			"email": email.length ? Json(email) : Json(null), "provider": Json("password"), "roles": r]);
+		return this;
+	}
+
+	/// Select rows of an `st.dataframe(..., onSelect: "rerun", key: key)` (call `run()` afterwards).
+	AppTest selectRows(string key, size_t[] rows...)
+	{
+		auto a = Json.emptyArray;
+		foreach (r; rows)
+			a.appendArrayElement(Json(cast(long) r));
+		sess.requestRerun(["k:" ~ key: Json(["rows": a])]);
+		return this;
+	}
+
+	/// Select a group row of a tree table (`groupBy`) by its path (call `run()` afterwards).
+	AppTest selectGroup(string key, string[] path...)
+	{
+		auto a = Json.emptyArray;
+		foreach (p; path)
+			a.appendArrayElement(Json(p));
+		sess.requestRerun(["k:" ~ key: Json(["group": a])]);
+		return this;
+	}
+
+	/// Paths of the containers of one block kind ("dialog", "card", "expander", ...) in page order,
+	/// e.g. to check that one is drawn inside another.
+	int[][] paths(string block)
+	{
+		import std.algorithm : sort;
+		int[][] r;
+		foreach (k, el; treeEls)
+			if (el["kind"].opt!string(null) == "block" && el["block"].opt!string(null) == block)
+				r ~= treePaths[k];
+		r.sort();
+		return r;
+	}
+
+	/// Send an event to a keyed widget that triggers a run, e.g. a click in
+	/// `st.calendarGrid(..., key: key)`: `at.trigger("plan", Json(["kind": Json("row"), "row": Json("acme")]))`.
+	AppTest trigger(string key, Json value)
+	{
+		sess.requestRerun(null, "k:" ~ key, value);
+		return this;
+	}
+
+	/// Close a dialog like the user does with × or Esc (call `run()` afterwards). Without
+	/// `onDismiss` the server never hears of it, so this throws.
+	AppTest dismissDialog(string title)
+	{
+		foreach (k, el; treeEls)
+			if (el["kind"].opt!string(null) == "block" && el["block"].opt!string(null) == "dialog"
+				&& el["title"].opt!string(null) == title)
+			{
+				auto did = el["dismissId"].opt!string(null);
+				if (!did.length)
+					throw new Exception("dialog '" ~ title ~ "' has no onDismiss");
+				sess.requestRerun(null, did, Json(true));
+				return this;
+			}
+		throw new Exception("no dialog titled '" ~ title ~ "'");
+	}
+
+	/// Set `st.context` (request headers, cookies, address, language, time zone, URL).
+	AppTest setContext(RequestContext c)
+	{
+		sess.setRequestContext(c);
 		return this;
 	}
 

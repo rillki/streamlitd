@@ -23,7 +23,7 @@ import streamlitd.theme;
 import streamlitd.executor;
 import streamlitd.authserver;
 import streamlitd.accounts : AccountError;
-import streamlitd.delta : UserInfo;
+import streamlitd.delta : UserInfo, RequestContext;
 import streamlitd.openapi;
 import streamlitd.extensions : registerElement, buildExtensionAssets, ExtensionAssets;
 
@@ -199,6 +199,7 @@ private void handleWS(scope WebSocket sock) @system
 	auto sess = new AppSession(g_app, transport);
 	sess.defaultTheme = g_opts.theme;
 	sess.user = userFromRequest(g_auth, cast(HTTPServerRequest) sock.request);
+	sess.setRequestContext(requestContextOf(cast(HTTPServerRequest) sock.request));
 	sess.authEnabled = g_auth.enabled;
 	sess.authRequired = g_auth.required;
 	sess.mapTileUrl = g_opts.mapTileUrl;
@@ -688,6 +689,7 @@ int serve(AppFn app, ServerOptions opts = ServerOptions.init, RoutesFn routes = 
 	router.get("/_stcore/ext/:file", &serveExtension);
 	router.get("/static/*", &serveAsset);
 	router.get("/_media/:id", &serveMedia);
+	router.get("/_stcore/download/:token", &serveLazyDownload);
 	router.get("/_components/*", &serveComponent);
 	router.post("/_upload/:sid/:wid", &handleUpload);
 	if (g_auth.enabled)
@@ -888,6 +890,76 @@ private string readNewPassword(string prompt)
 		}
 	}
 	return readln().chomp;
+}
+
+/// `st.context` from the WebSocket's upgrade request; the browser adds language, time zone and URL.
+package RequestContext requestContextOf(HTTPServerRequest req)
+{
+	import std.uni : toLower;
+	import std.string : strip;
+	import std.algorithm : splitter;
+	RequestContext c;
+	foreach (k, v; req.headers.byKeyValue)
+		c.headers[k.toLower] = v;
+	foreach (k, v; req.cookies)
+		c.cookies[k] = v;
+	auto xff = req.headers.get("X-Forwarded-For", "");
+	if (g_opts.trustProxy && xff.length)
+	{
+		string last;
+		foreach (part; xff.splitter(","))
+			last = part.strip;
+		c.ip = last;
+	}
+	else
+	{
+		try c.ip = req.clientAddress.toAddressString();
+		catch (Exception) c.ip = req.peer;
+	}
+	auto al = req.headers.get("Accept-Language", "");
+	foreach (part; al.splitter(","))
+	{
+		c.locale = part.splitter(";").front.strip;
+		break;
+	}
+	return c;
+}
+
+/// A file of `downloadButton(label, () => build(), ...)`, built now, on a thread of its own.
+private void serveLazyDownload(HTTPServerRequest req, HTTPServerResponse res)
+{
+	import streamlitd.blocking : blocking;
+	import std.uri : encodeComponent;
+	if (g_auth.required && userFromRequest(g_auth, req).type == Json.Type.null_)
+	{
+		res.statusCode = 401;
+		res.writeBody("login required");
+		return;
+	}
+	auto tok = req.params["token"];
+	AppSession.LazyDownload* d;
+	foreach (s; g_sessions)
+		if ((d = s.lazyDownload(tok)) !is null)
+			break;
+	if (d is null)
+	{
+		res.statusCode = 404;
+		res.writeBody("this download is no longer available; reload the page");
+		return;
+	}
+	const(ubyte)[] data;
+	try
+		data = blocking(() => d.build());
+	catch (Exception e)
+	{
+		stderr.writeln("streamlitd: download ", d.fileName, " failed: ", e.msg);
+		res.statusCode = 500;
+		res.writeBody("the file could not be built");
+		return;
+	}
+	res.headers["Content-Disposition"] = `attachment; filename*=UTF-8''` ~ encodeComponent(d.fileName);
+	res.headers["Cache-Control"] = "no-store";
+	res.writeBody(data, d.mime);
 }
 
 /// The login page, returning to the requested page afterwards.

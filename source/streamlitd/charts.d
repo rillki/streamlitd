@@ -61,6 +61,15 @@ Json buildChartSpec(string mark, DataFrame df, string x, string[] y, string colo
 	auto xEnc = jo("field", vlField(xf), "type", xType, "title", xLabel.length ? xLabel : (xf == indexField ? null : xf));
 	if (xType == "nominal" || xType == "ordinal")
 		xEnc["sort"] = Json(null);
+	// times within a day (a live chart's last minutes): clock labels, not Vega's ".800"-style ticks
+	if (xt == ColumnType.datetime && xf != indexField && df.length)
+	{
+		import std.algorithm : maxElement, minElement;
+		auto ts = df.rawColumn(xf).filter!(j => j.type == Json.Type.string).map!(j => j.get!string)
+			.filter!(v => v.length >= 10).array;
+		if (ts.length && ts.maxElement[0 .. 10] == ts.minElement[0 .. 10])
+			xEnc["axis"] = jo("format", "%H:%M:%S", "labelOverlap", true);
+	}
 	auto transforms = Json.emptyArray;
 	Json yEnc;
 	bool multi = color.length == 0 && y.length > 1;
@@ -93,6 +102,14 @@ Json buildChartSpec(string mark, DataFrame df, string x, string[] y, string colo
 	{
 		enc["x"] = xEnc;
 		enc["y"] = yEnc;
+	}
+	// unstacked bars of several series stand side by side (like Streamlit's stack=False)
+	if (mark == "bar" && !stack && "color" in enc && "field" in enc["color"])
+	{
+		auto off = jo("field", enc["color"]["field"], "type", "nominal");
+		if ("sort" in enc["color"])
+			off["sort"] = enc["color"]["sort"];
+		enc[horizontal ? "yOffset" : "xOffset"] = off;
 	}
 	if (size.length)
 		enc["size"] = jo("field", vlField(size), "type", "quantitative", "title", size);
@@ -279,4 +296,18 @@ unittest
 	assert(b["encoding"]["x"]["field"].get!string == "(index)");
 	assert(b["height"].get!long == 200);
 	assert(b["transform"].type == Json.Type.undefined);
+	// unstacked bars of several series: side by side (xOffset), stacked ones: none
+	auto g = buildChartSpec("bar", df, "day", ["a.b", "c"], null, 0, null, null, false);
+	assert(g["encoding"]["xOffset"]["field"].get!string == "series");
+	assert("xOffset" !in buildChartSpec("bar", df, "day", ["a.b", "c"], null, 0, null, null, true)["encoding"]);
+	// a datetime x within one day: clock labels
+	import std.datetime : DateTime;
+	auto live = new DataFrame().addColumn("t", [DateTime(2026, 11, 18, 9, 0, 0), DateTime(2026, 11, 18, 9, 0, 5)])
+		.addColumn("v", [1.0, 2]);
+	assert(buildChartSpec("line", live, "t", ["v"], null, 0, null, null)["encoding"]["x"]["axis"]["format"].get!string == "%H:%M:%S");
+	auto days_ = new DataFrame().addColumn("t", [DateTime(2026, 11, 18, 9, 0, 0), DateTime(2026, 11, 20, 9, 0, 0)])
+		.addColumn("v", [1.0, 2]);
+	assert("axis" !in buildChartSpec("line", days_, "t", ["v"], null, 0, null, null)["encoding"]["x"]);
+	auto h = buildChartSpec("bar", df, "day", ["c"], "a.b", 0, null, null, false, true);
+	assert(h["encoding"]["yOffset"]["field"].get!string == `a\.b`);
 }

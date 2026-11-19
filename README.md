@@ -25,7 +25,7 @@ dub run                          # → http://localhost:8501
 ```
 
 📚 **Documentation:** [docs/](docs/README.md) has the [getting started](docs/getting-started.md) guide, the
-[tutorial](docs/tutorial.md) and the [Python → D cheat sheet](docs/cheatsheet.md).
+[tutorial](docs/tutorial.md), five [larger example apps](docs/examples.md) and the [Python → D cheat sheet](docs/cheatsheet.md).
 
 ## Screenshots
 
@@ -58,8 +58,11 @@ win95, XP, brutalist, material and glass, each usable with any color scheme:
   - pills, segmented control, feedback
 - **Layout:** sidebar, columns, tabs, expanders, containers, popovers, `st.empty`, dialogs,
   status containers, **fragments** with `runEvery` auto-refresh.
-- **Data:** a `DataFrame` type (structs, CSV, JSON; filter, sort, groupBy), interactive tables, a
-  data editor, Vega-Lite charts, Plotly, maps, images, audio, video.
+- **Data:** a `DataFrame` type (structs, CSV, JSON; filter, sort, groupBy).
+  - **Tables:** interactive tables with column configuration (formats, colours, heat maps, pinned
+    and grouped columns), totals rows, row/cell selection and tree rows (`groupBy`).
+  - **Editing and charts:** a data editor with typed column editors; Vega-Lite charts, Plotly,
+    maps, images, audio, video.
 - **Theming:** 8 design styles (terminal, retro, win95, XP, brutalist, material, glass, streamlit) ×
   8 color schemes × light/dark, custom colors and fonts (Streamlit-compatible `[theme]` keys), and a
   viewer appearance menu.
@@ -74,7 +77,12 @@ win95, XP, brutalist, material and glass, each usable with any color scheme:
   Entra ID, Keycloak, …): [Authentication](docs/authentication.md).
 - **App shell and business UI** beyond Streamlit: top navigation with sections, breadcrumbs, a header
   bar, user menu, footer and banners; menu buttons, pagination, cards, stepper, timeline, tags, tree
-  select, date ranges and more: [Layout](docs/layout-and-navigation.md), [More elements](docs/more-elements.md).
+  select, date ranges, a calendar/schedule grid, KPI trends, feeds, legends, nested dialogs, folding
+  sidebar sections with badges, exports built on click and `st.context`:
+  [Layout](docs/layout-and-navigation.md), [More elements](docs/more-elements.md).
+- **Many users at once:** sessions are isolated per tab and run on worker threads. Caches compute a
+  value once for everybody, and `blocking(...)` keeps slow drivers from holding up other users. A
+  load test runs 200 simultaneous sessions.
 - **Custom components** compatible with Streamlit's component protocol.
 - **Extensible:** add your own color schemes, design styles and native widgets, in D or in
   `config.toml`: [Extending](docs/extending.md).
@@ -91,6 +99,7 @@ win95, XP, brutalist, material and glass, each usable with any color scheme:
 |---|---|
 | [Getting started](docs/getting-started.md) | install, first app, project layout |
 | [Tutorial](docs/tutorial.md) | build a dashboard step by step |
+| [Examples](examples/README.md) · [Example apps guide](docs/examples.md) | every example with a screenshot (demo login: alice / streamlitd-demo); five larger apps (helpdesk, purchase planning, TODO, Gantt planner, live monitor) and how to structure your own |
 | [Core concepts](docs/concepts.md) | reruns, state, callbacks, forms, fragments, caching, threads |
 | [Layout & navigation](docs/layout-and-navigation.md) · [Data & charts](docs/data-and-charts.md) · [Theming](docs/theming.md) | guides |
 | [Configuration](docs/configuration.md) · [Deployment](docs/deployment.md) (Docker, nginx, systemd) · [Authentication](docs/authentication.md) | running in production |
@@ -108,7 +117,8 @@ win95, XP, brutalist, material and glass, each usable with any color scheme:
 ```
 source/streamlitd/   the library (server, session, St API, DataFrame, charts, auth, ...)
 assets/              frontend: index.html, app.js, style.css, vendor/ (bundled JS libraries)
-examples/            runnable apps: hello, widgets, data, multipage, themes, prod, fragments, extras, auth, tutorial, api, custom
+examples/            runnable apps: hello, widgets, data, multipage, themes, prod, fragments, extras, auth, accounts, tutorial, api, custom, business,
+                     and larger ones: helpdesk, planning, todo, gantt, monitor (examples/README.md)
 docs/                documentation and screenshots
 tests/unit/          headless AppTest suites (dub test)
 tests/e2e/           Playwright end-to-end tests and the screenshot script

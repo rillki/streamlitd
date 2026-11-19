@@ -117,7 +117,7 @@ The full list is in [Configuration](configuration.md).
 ```
 myapp/
 ├── dub.json
-├── source/app.d              # your app (you can split it into more modules)
+├── source/app.d              # your app (split it into modules as it grows: see examples.md)
 ├── data/                     # files your app reads (paths are relative to the working directory)
 └── .streamlitd/
     ├── config.toml           # optional settings (port, theme, ...)
@@ -134,4 +134,5 @@ myapp/
 ## Next
 
 - Build a real dashboard in the [tutorial](tutorial.md).
+- Read a larger app: [Example apps](examples.md) shows five, and how to split an app into modules.
 - Coming from Python? Keep the [cheat sheet](cheatsheet.md) open.

@@ -21,7 +21,18 @@ test("tutorial dashboard: filters, tabs, form, live fragment", async ({ page }) 
 
   // data tab
   await page.getByRole("tab", { name: "🗂 Data" }).click();
-  await expect(page.getByTestId("st-dataframe").locator("tbody tr")).toHaveCount(90);
+  const table = page.getByTestId("st-dataframe");
+  await expect(table.locator("tbody tr")).toHaveCount(90);
+  // column formats and the totals row
+  await expect(table.locator("tbody tr").first().locator("td").first()).toHaveText(/^\d\d\.\d\d\.\d{4}$/);
+  await expect(table.locator("tbody tr").first().locator("td").last()).toHaveText(/^\$[\d,]+\.\d\d$/);
+  await expect(table.locator("tfoot th")).toHaveText("Total");
+  // the CSV is built when clicked
+  const dl = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download CSV" }).click();
+  const file = await dl;
+  expect(file.suggestedFilename()).toBe("sales.csv");
+  expect(require("fs").readFileSync(await file.path(), "utf8").split("\n")[0]).toBe("date,region,product,units,revenue");
 
   // form adds a row (North is still selected)
   await page.getByText("➕ Add a sale").click();

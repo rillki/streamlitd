@@ -1,0 +1,9 @@
+{
+	"name": "gantt",
+	"description": "A project planner: phases and tasks on a Gantt chart, milestones, dependencies, edit dialogs",
+	"targetType": "executable",
+	"mainSourceFile": "source/app.d",
+	"sourcePaths": ["source"],
+	"importPaths": ["source"],
+	"dependencies": {"streamlitd": {"path": "../.."}}
+}

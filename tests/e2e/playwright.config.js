@@ -4,7 +4,7 @@ const os = require("os");
 const fs = require("fs");
 
 const root = path.resolve(__dirname, "../..");
-const apps = { hello: 8701, widgets: 8702, data: 8703, multipage: 8704, themes: 8705, prod: 8706, fragments: 8707, extras: 8708, auth: 8709, tutorial: 8710, api: 8711, custom: 8713, accounts: 8714 };
+const apps = { hello: 8701, widgets: 8702, data: 8703, multipage: 8704, themes: 8705, prod: 8706, fragments: 8707, extras: 8708, auth: 8709, tutorial: 8710, api: 8711, custom: 8713, accounts: 8714, business: 8717, helpdesk: 8718, planning: 8719, todo: 8721, gantt: 8722, monitor: 8720 };
 // the same example started again with other flags (header controls in a menu / hidden)
 const variants = {
   "hello-menu": { app: "hello", port: 8715, flags: "--rerun-button menu --settings-button menu" },
@@ -18,6 +18,13 @@ const userDir = (name) => path.join(os.tmpdir(), "streamlitd-e2e-" + name);
 const appEnv = {
   auth: `rm -rf ${userDir("auth")} && STREAMLITD_AUTH_USERS_FILE=${userDir("auth")}/users.json STREAMLITD_API_DOCS=true `,
   accounts: `rm -rf ${userDir("accounts")} && STREAMLITD_AUTH_USERS_FILE=${userDir("accounts")}/users.json `,
+  // the larger examples start from fresh demo data each run
+  helpdesk: `rm -rf ${userDir("helpdesk")} && STREAMLITD_AUTH_USERS_FILE=${userDir("helpdesk")}/users.json HELPDESK_DATA=${userDir("helpdesk")}/helpdesk.json `,
+  planning: `rm -rf ${userDir("planning")} && PLANNING_DATA=${userDir("planning")}/planning.json PLANNING_TODAY=2026-11-18 `,
+  todo: `rm -rf ${userDir("todo")} && STREAMLITD_AUTH_SIGNUPS_PER_HOUR=0 STREAMLITD_AUTH_USERS_FILE=${userDir("todo")}/users.json TODO_DATA=${userDir("todo")}/todo.json TODO_TODAY=2026-11-18 `,
+  gantt: `rm -rf ${userDir("gantt")} && GANTT_DATA=${userDir("gantt")}/gantt.json GANTT_TODAY=2026-11-18 `,
+  // samples three times a second, and a slow source that answers in half a second
+  monitor: `MONITOR_TICK_MS=300 MONITOR_SLOW_MS=500 `,
 };
 
 // Use a locally installed Chromium if the bundled one is missing (override with CHROMIUM_PATH).

@@ -114,7 +114,34 @@ if (st.button("Reset"))
 ```
 
 Assigning `st.session[key]` from code overrides what the user typed the next time the widget
-is drawn.
+is drawn. `st.resetWidgets("name", ...)` goes back to the widgets' defaults.
+
+A keyed widget keeps its value in `st.session` even in runs where it is not drawn (on another page,
+in a closed branch), so it comes back with the viewer's choice.
+
+## The request: `st.context`
+
+<!-- wrap -->
+```d
+auto c = st.context;
+auto token = c.cookie("airop_token");          // e.g. single sign-on from a portal
+st.write("Language:", c.locale, "· time zone:", c.timezone, "· from", c.ip);
+if (c.header("X-Requested-With") == "intranet")
+    st.caption("Opened from the intranet");
+```
+
+| Field | Value |
+|---|---|
+| `header(name)`, `headers` | request headers of the page's connection (any case) |
+| `cookie(name)`, `cookies` | its cookies (also HttpOnly ones: the app runs on the server) |
+| `ip` | the client address (behind a proxy with `[server] trustProxy`, the address the proxy reports) |
+| `locale` | the browser's language, e.g. `ru-RU` |
+| `timezone`, `timezoneOffset` | the browser's time zone, e.g. `Asia/Almaty`, and minutes east of UTC |
+| `url` | the page's address in the browser |
+
+The headers and cookies are those of the WebSocket connection, sent when the page opens. The
+language, time zone and URL come with every browser message. In tests, use
+`at.setContext(RequestContext(...))`.
 
 ## Callbacks
 
@@ -266,13 +293,66 @@ By default each run executes on a vibe.d **worker thread** (`--script-threads`, 
 per CPU core). A CPU-heavy run therefore does not block other users. Worker threads have a vibe.d
 event loop, so vibe.d drivers (PostgreSQL, MongoDB, HTTP client) work inside `app`.
 
+Several sessions share one worker thread (each run is a vibe.d task, a fiber). A run that waits in
+a vibe.d call (database query, HTTP request, `st.sleep`) lets the others continue. A run that
+**blocks the thread** stops the other sessions on that thread until it returns. Examples are a
+non-vibe driver (ODBC, a C library), `std.net.curl`, `Thread.sleep`, or a long loop.
+
+**`blocking`** runs such a call on a thread of its own while the session waits, so the others go
+on:
+
+<!-- wrap -->
+```d
+import core.thread : Thread;
+import core.time : msecs;
+auto rows = blocking(() {                 // e.g. an ODBC query
+    Thread.sleep(200.msecs);
+    return ["a", "b"];
+});
+st.write("Rows:", rows.length);
+```
+
+The load test (`tests/load/load.mjs`) checks this: while one session blocks for 1.5 s, 199 others
+finish their runs in about 40 ms.
+
+**What is shared between users:**
+
+| Per session (browser tab) | Shared by everybody |
+|---|---|
+| widget values, `st.session`, the current page, `st.user`, `st.context` | `cacheData`/`cacheResource` caches, module-level `shared`/`__gshared` variables, files and databases |
+
+- **Module-level variables are thread-local in D.** `int visits;` at module level is a separate
+  variable in every worker thread, so different users would see different values. For data
+  shared between users:
+  - declare it `shared` (with `core.atomic`) or `__gshared`, and protect it with a `Mutex`;
+  - or use `cacheResource` / `cacheData`, which are thread-safe.
+- **Caches compute once.** When several sessions ask a `cacheData`/`cacheResource` for the same
+  missing value at the same time, one computes it and the others wait for the result: one
+  connection pool, one slow query. If the computation throws, the next caller tries again.
 - Use `st.sleep(seconds)` instead of `Thread.sleep`. It yields, and it lets a newer event
   interrupt the run.
-- **Global mutable state** (`__gshared` variables, module-level caches you write yourself) is
-  shared between threads. Protect it with a `Mutex`, or use `cacheData`/`cacheResource`, which
-  are thread-safe.
 - `--script-threads 0` runs every script on the event-loop thread as fibers, which is simpler
   to debug. Then one CPU-bound session does delay the others.
+
+## User text in Markdown
+
+`st.markdown`, `st.write`, labels, captions, toasts, feeds, timelines and dialog titles read
+**Markdown**. Text that users typed is Markdown too, unless you escape it. `![x](http://…)` in a
+ticket title then becomes an image that every other viewer's browser loads: a tracking pixel that
+tells a stranger who looked, and when. Links and `:red[…]` "official" text can be faked the same
+way. Raw HTML and `javascript:` links are always neutralised, but Markdown itself is not.
+It matters when one person's text is shown to others (tickets, comments, names in a shared app).
+Echoing people's own input back to them, as the `hello` example does, harms no one.
+`escapeMarkdown` shows such text exactly as it was typed:
+
+<!-- wrap -->
+```d
+auto title = st.textInput("Title");
+st.subheader("Ticket: " ~ escapeMarkdown(title));        // shown as typed, never formatted
+st.markdown("**" ~ escapeMarkdown(title) ~ "** was saved"); // your formatting, their text
+```
+
+Tables (`st.dataframe`, `st.table`), inputs and the navigation show text as text already.
 
 ## Errors
 

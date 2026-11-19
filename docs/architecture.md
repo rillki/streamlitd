@@ -29,6 +29,10 @@
 | `useradmin.d` | `St` methods for accounts: `st.accounts`, `requireLogin`, `requireRole`, `userAdmin()` |
 | `testing.d` | `AppTest` |
 | `assetlist.d` | generated list of embedded assets (`tools/gen_assets.py`); Swagger UI has its own list, `swaggerAssetNames` |
+| `columnconfig.d` | `ColumnConfig` (column types, formats, colours) for `dataframe`, `table`, `dataEditor`; the table renderer is `assets/table.js` |
+| `calendar.d` | `st.calendarGrid` (`GridRow`, `GridItem`, `GridEvent`); rendered by `assets/calendar.js` |
+| `blocking.d` | `blocking(fn)`: a blocking call on its own thread while the vibe.d task yields |
+| `liveregistry.d` | the open sessions, for `refreshFragments` |
 | `extensions.d` | app-defined native elements and widgets (`registerElement`, `st.customElement`, `st.customWidget!T`) and the combined extension stylesheet/script; the scheme and design registries live in `theme.d` |
 | `openapi.d` | `registerApi`, OpenAPI 3.0 generation from REST interfaces (compile-time schemas), Swagger UI page; compiled out with the version `StreamlitdNoApiDocs` |
 

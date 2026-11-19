@@ -164,6 +164,12 @@ allowedOrigins = ["https://apps.example.com"]
 
 - **One process serves many users.** Each run executes on a worker thread
   (`--script-threads`, default one per CPU core), so CPU-heavy pages don't block each other.
+  - The load test (`node tests/load/load.mjs --sessions 200`) runs 200 simultaneous sessions on
+    4 script threads with a p95 run time of about 40 ms. It also checks that no session sees
+    another's values.
+  - Wrap blocking, non-vibe calls (ODBC, C drivers, `std.net.curl`) in `blocking(...)`, so they
+    don't hold up the other sessions on the same thread
+    ([Threads](concepts.md#threads-and-blocking)).
 - **Memory:** each session keeps its widget values, `st.session` contents, uploaded files and
   the media it currently shows. Use `--max-sessions` and `--idle-timeout` to bound it. An idle tab
   that hits the timeout reconnects with a fresh session, so its state is lost.

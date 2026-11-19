@@ -20,16 +20,20 @@ struct Page
 	/// Group heading in the navigation: a heading in the sidebar, a dropdown in the top bar
 	/// (Streamlit's `st.navigation({"Section": [...]})`). Pages of a section should be adjacent.
 	string section;
+	/// A small counter or label next to the page in the navigation, e.g. "3" unread (streamlitd
+	/// only). Set it in each run, like the rest of the navigation.
+	string badge;
 
 	this(void function(St) fn, string title, string icon = null, string urlPath = null, bool isDefault = false,
-		string section = null)
+		string section = null, string badge = null)
 	{
-		this(toDelegate(fn), title, icon, urlPath, isDefault, section);
+		this(toDelegate(fn), title, icon, urlPath, isDefault, section, badge);
 	}
 
 	this(AppFn fn, string title, string icon = null, string urlPath = null, bool isDefault = false,
-		string section = null)
+		string section = null, string badge = null)
 	{
+		this.badge = badge;
 		this.fn = fn;
 		this.title = title;
 		this.icon = icon;
@@ -74,8 +78,12 @@ mixin template PageElements()
 	/// `st.navigation` — declares the pages and returns the selected one; call `.run(st)` on it.
 	/// `position`: "sidebar", "top" (links in the header bar; sections become dropdowns, and on
 	/// narrow screens everything moves into a ☰ menu) or "hidden". Group pages with `Page.section`.
-	Page navigation(Page[] pages, string position = "sidebar")
+	/// `sections`: "headings" (default) or "collapsible": in the sidebar, sections fold, and the
+	/// current page's section is open.
+	Page navigation(Page[] pages, string position = "sidebar", string sections = "headings")
 	{
+		if (sections != "headings" && sections != "collapsible")
+			throw new StreamlitAPIException(`navigation() sections must be "headings" or "collapsible"`);
 		if (pages.length == 0)
 			throw new StreamlitAPIException("navigation() needs at least one page");
 		if (position != "sidebar" && position != "top" && position != "hidden")
@@ -97,7 +105,8 @@ mixin template PageElements()
 		foreach (i, p; pages)
 		{
 			sess.navPagePaths ~= p.urlPath;
-			list ~= jo("title", p.title, "icon", p.icon, "urlPath", i == def ? "" : p.urlPath, "section", p.section);
+			list ~= jo("title", p.title, "icon", p.icon, "urlPath", i == def ? "" : p.urlPath, "section", p.section,
+				"badge", p.badge);
 		}
 		// breadcrumbs: default page › section › current page
 		auto crumbs = Json.emptyArray;
@@ -108,7 +117,7 @@ mixin template PageElements()
 		crumbs ~= jo("label", pages[sel].title, "urlPath", sel == def ? "" : pages[sel].urlPath);
 		sess.navCrumbs = crumbs;
 		sess.send(jo("type", "navigation", "pages", list, "current", sel == def ? "" : pages[sel].urlPath,
-			"position", position, "title", pages[sel].title));
+			"position", position, "title", pages[sel].title, "sections", sections));
 		return pages[sel];
 	}
 

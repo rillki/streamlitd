@@ -78,7 +78,7 @@ test("header bar items, banner dismissal and footer", async ({ page }) => {
 test("user menu: picture or initials, app items, log out", async ({ page }) => {
   await page.goto(url("auth", "/"));
   await page.getByLabel("Username").fill("alice");
-  await page.getByLabel("Password").fill("secret123");
+  await page.getByLabel("Password").fill("streamlitd-demo");
   await page.getByRole("button", { name: "Sign in" }).click();
   await waitIdle(page, 1);
   const btn = page.getByTestId("st-user-menu");

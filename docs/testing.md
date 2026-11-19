@@ -55,6 +55,11 @@ fragments and dialogs behave as in the browser.
 | `.customElements(name)` | the custom elements and widgets named `name` (`st.customElement`, `st.customWidget`; see [Extending](extending.md)) |
 | `.exceptions` | errors shown in the page |
 | `.messages(type)` | other messages of the last run (`toast`, `navigation`, `set_theme`, …) |
+| `.trigger(key, value)` | send a click event to a keyed widget, e.g. `st.calendarGrid` |
+| `.paths(block)` | paths of the containers of one kind (`"dialog"`, `"card"`, ...), e.g. to check nesting |
+| `.dismissDialog(title)` | close a dialog like the user does with × or Esc (it needs `onDismiss`) |
+| `.setContext(RequestContext(...))` | set `st.context` (headers, cookies, address, language, time zone) |
+| `.selectRows(key, rows...)`, `.selectGroup(key, path...)` | select rows or a tree group of an `st.dataframe(..., onSelect: "rerun", key: key)` |
 | `.loginAs(username, roles)`, `.logout()` | act as a logged-in user (`st.user`, roles); with `useAccounts`, a user from that store |
 | `AppTest.useAccounts(accounts)` | the account service for `st.accounts` and `st.userAdmin` (process-wide; `null` removes it) |
 | `.lastStatus` | `RunStatus.ok`, `error`, `stopped` |
@@ -139,3 +144,20 @@ DC=dmd ./run-tests.sh   # with DMD instead of LDC (default: ldc2); DC applies to
 ```
 
 Playwright uses the Chromium in `~/.cache/ms-playwright`, or `CHROMIUM_PATH`.
+
+## Load test
+
+`tests/load/load.mjs` opens many sessions at once against `tests/load/app.d` with Node's built-in
+WebSocket and checks:
+- every session sees only its own values (no cross-talk);
+- while one session runs a 1.5 s `blocking` call, the others' runs still finish quickly;
+- a `cacheData` value that all sessions ask for at once is computed once;
+- one `refreshFragments` reaches every session.
+
+```sh
+(cd tests/load && dub build)
+node tests/load/load.mjs --sessions 200 --threads 4   # prints latencies; exits 1 on a failure
+```
+
+`./run-tests.sh` runs it with 100 sessions at the end (`LOAD=0 ./run-tests.sh` skips it).
+`tests/e2e/specs/multiuser.spec.js` also has three browsers use one app at the same time.

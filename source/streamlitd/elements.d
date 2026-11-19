@@ -57,6 +57,26 @@ struct Spinner
 	}
 }
 
+/// An entry of `st.legend`.
+struct LegendItem
+{
+	string label;
+	string color;   /// a token ("success", "warning", "error", "info", "muted", "primary") or a hex colour; null: the chart palette
+	string shape;   /// "square" (default), "circle", "line" or "diamond"
+}
+
+/// An item of `st.feed` (a notification or alert).
+struct FeedItem
+{
+	string title;
+	string body;      /// Markdown
+	string time;      /// as given, e.g. "09:12" or "2 h ago"
+	string type;      /// severity colour: null, "info", "success", "warning" or "error"
+	bool unread;      /// shows a dot and a bold title
+	string icon;      /// an emoji, or null for the severity's icon
+	string[] badges;  /// small labels, e.g. ["ACME", "14 days overdue"]
+}
+
 /// An event of `st.timeline`.
 struct TimelineItem
 {
@@ -91,6 +111,8 @@ mixin template Elements()
 	}
 
 	/// `st.markdown` — GitHub-flavoured Markdown. Raw HTML is escaped unless `unsafeAllowHtml`.
+	/// Colours as in Streamlit: `:red[text]`, `:blue-background[text]`, `:green-badge[text]` (a
+	/// small label, like `st.badge`).
 	void markdown(string body_, bool unsafeAllowHtml = false, string help = null)
 	{
 		emit(jo("kind", "markdown", "body", body_, "allowHtml", unsafeAllowHtml, "help", help));
@@ -130,6 +152,7 @@ mixin template Elements()
 	}
 
 	/// `st.badge`: a small colored label. Colors: blue, green, orange, red, violet, gray, primary.
+	/// Inside Markdown text, write `:blue-badge[label]`.
 	void badge(string label, string icon = null, string color = "blue")
 	{
 		emit(jo("kind", "badge", "label", label, "icon", icon, "color", color));
@@ -175,18 +198,18 @@ mixin template Elements()
 	}
 
 	/// Labels and values of one record, in a two-column list (streamlitd only), e.g. a customer's
-	/// details. Values are Markdown.
-	void details(string[2][] rows)
+	/// details. Values are Markdown. `inline: true` puts them side by side in one row (a stat strip).
+	void details(string[2][] rows, bool inline = false)
 	{
 		auto a = Json.emptyArray;
 		foreach (r; rows)
 			a.appendArrayElement(Json([Json(r[0]), Json(r[1])])); // `~=` would splice the pair in
-		emit(jo("kind", "details", "rows", a));
+		emit(jo("kind", "details", "rows", a, "inline", inline));
 	}
 
 	/// ditto, from a JSON object: its keys are the labels, in alphabetical order (JSON objects keep
 	/// no order; use the `string[2][]` form for your own order). Non-string values are shown as JSON.
-	void details(Json record)
+	void details(Json record, bool inline = false)
 	{
 		import std.algorithm : sort;
 		auto a = Json.emptyArray;
@@ -200,7 +223,7 @@ mixin template Elements()
 			auto v = record[k];
 			a.appendArrayElement(Json([Json(k), Json(v.type == Json.Type.string ? v.get!string : v.toString)]));
 		}
-		emit(jo("kind", "details", "rows", a));
+		emit(jo("kind", "details", "rows", a, "inline", inline));
 	}
 
 	/// Progress through a sequence of steps (streamlitd only), e.g. a multi-step form. `current` is
@@ -262,32 +285,90 @@ mixin template Elements()
 	}
 
 	/// `st.metric`. `delta` starting with "-" is shown as a decrease.
+	/// `chartData` draws a small trend chart under the value (`chartType`: "line", "bar" or
+	/// "area"); `caption` adds a small line, e.g. "was 1,204 on 01.10" (streamlitd only).
 	void metric(string label, string value, string delta = null, string deltaColor = "normal",
-		string help = null, bool border = false)
+		string help = null, bool border = false, double[] chartData = null, string chartType = "line",
+		string caption = null)
 	{
+		if (chartType != "line" && chartType != "bar" && chartType != "area")
+			throw new StreamlitAPIException(`metric() chartType must be "line", "bar" or "area"`);
 		emit(jo("kind", "metric", "label", label, "value", value, "delta", delta, "deltaColor", deltaColor,
-			"help", help, "border", border));
+			"help", help, "border", border, "chartData", chartData, "chartType", chartType, "caption", caption));
 	}
 
 	/// ditto (an exact `int` overload, so int values are not ambiguous between long and double)
 	void metric(string label, int value, string delta = null, string deltaColor = "normal",
-		string help = null, bool border = false)
+		string help = null, bool border = false, double[] chartData = null, string chartType = "line",
+		string caption = null)
 	{
-		metric(label, value.to!string, delta, deltaColor, help, border);
+		metric(label, value.to!string, delta, deltaColor, help, border, chartData, chartType, caption);
 	}
 
 	/// ditto
 	void metric(string label, long value, string delta = null, string deltaColor = "normal",
-		string help = null, bool border = false)
+		string help = null, bool border = false, double[] chartData = null, string chartType = "line",
+		string caption = null)
 	{
-		metric(label, value.to!string, delta, deltaColor, help, border);
+		metric(label, value.to!string, delta, deltaColor, help, border, chartData, chartType, caption);
 	}
 
 	/// ditto
 	void metric(string label, double value, string delta = null, string deltaColor = "normal",
-		string help = null, bool border = false)
+		string help = null, bool border = false, double[] chartData = null, string chartType = "line",
+		string caption = null)
 	{
-		metric(label, format("%g", value), delta, deltaColor, help, border);
+		metric(label, format("%g", value), delta, deltaColor, help, border, chartData, chartType, caption);
+	}
+
+	/// A placeholder for "nothing here yet" (streamlitd only): an icon, a title and a Markdown body,
+	/// e.g. when a filter matches no rows.
+	void emptyState(string title, string body_ = null, string icon = "🗂️")
+	{
+		emit(jo("kind", "empty_state", "title", title, "body", body_, "icon", icon));
+	}
+
+	/// A legend for charts and colour-coded tables (streamlitd only).
+	void legend(LegendItem[] items, string title = null)
+	{
+		auto a = Json.emptyArray;
+		foreach (it; items)
+		{
+			if (it.shape.length && it.shape != "square" && it.shape != "circle" && it.shape != "line" && it.shape != "diamond")
+				throw new StreamlitAPIException(`legend() shape must be "square", "circle", "line" or "diamond"`);
+			a.appendArrayElement(jo("label", it.label, "color", it.color, "shape", it.shape.length ? it.shape : "square"));
+		}
+		emit(jo("kind", "legend", "items", a, "title", title));
+	}
+
+	/// A bar split into parts in proportion to `values`, with a legend (streamlitd only), e.g. the
+	/// share of stock per status. `colors`: tokens ("success", "warning", "error", "info", "muted",
+	/// "primary") or hex colours; default: the chart palette.
+	void proportionBar(double[] values, string[] labels, string[] colors = null, string format = null)
+	{
+		if (labels.length != values.length)
+			throw new StreamlitAPIException("proportionBar(): one label per value");
+		if (colors.length && colors.length != values.length)
+			throw new StreamlitAPIException("proportionBar(): one colour per value (or none)");
+		foreach (v; values)
+			if (v < 0)
+				throw new StreamlitAPIException("proportionBar(): values must not be negative");
+		emit(jo("kind", "proportion_bar", "values", values, "labels", labels, "colors", colors, "format", format));
+	}
+
+	/// A list of notifications or alerts (streamlitd only): each with a title, a Markdown body, a
+	/// time, a severity colour, an unread dot and small badges.
+	void feed(FeedItem[] items)
+	{
+		auto a = Json.emptyArray;
+		foreach (it; items)
+		{
+			if (it.type.length && it.type != "info" && it.type != "success" && it.type != "warning" && it.type != "error")
+				throw new StreamlitAPIException(`feed() item type must be "info", "success", "warning" or "error"`);
+			a.appendArrayElement(jo("title", it.title, "body", it.body, "time", it.time, "type", it.type, "unread", it.unread,
+				"icon", it.icon, "badges", it.badges));
+		}
+		emit(jo("kind", "feed", "items", a));
 	}
 
 	/// `st.json` — a collapsible JSON viewer.

@@ -99,7 +99,7 @@ warning at startup. An existing `.streamlit/config.toml` can stay as it is.
 | `STREAMLITD_SERVER_FAVICON` | `[server] favicon` |
 | `STREAMLITD_SERVER_TRUSTPROXY` | `[server] trustProxy` |
 | `STREAMLITD_UI_RERUNBUTTON`, `_SETTINGSBUTTON`, `_RERUNSHORTCUT` | `[ui] rerunButton`, `settingsButton`, `rerunShortcut` |
-| `STREAMLITD_AUTH_REQUIRED`, `_REGISTRATION`, `_USERS_FILE`, `_COOKIE_SECRET`, `_PASSWORD_MIN_LENGTH`, `_REQUIRE_EMAIL` | the `[auth]` keys; they win over `config.toml` and `secrets.toml` |
+| `STREAMLITD_AUTH_REQUIRED`, `_REGISTRATION`, `_USERS_FILE`, `_COOKIE_SECRET`, `_PASSWORD_MIN_LENGTH`, `_REQUIRE_EMAIL`, `_SIGNUPS_PER_HOUR` | the `[auth]` keys; they win over `config.toml` and `secrets.toml` |
 | `STREAMLITD_API_DOCS` (`true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`) | `[api] docs` |
 | `STREAMLITD_API_DOCSPATH`, `_SPECPATH`, `_TITLE`, `_VERSION` | `[api] docsPath`, `specPath`, `title`, `version` |
 | `STREAMLITD_THEME_DESIGN`, `_SCHEME` (or `_PRESET`), `_MODE`, `_BASE` | `[theme] design`, `scheme`, `mode`, `base` |

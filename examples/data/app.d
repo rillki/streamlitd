@@ -4,7 +4,7 @@ import std.conv : to;
 import std.format : format;
 import std.math : sin, cos;
 import std.algorithm : map;
-import std.array : array;
+import std.array : array, join;
 import std.range : iota;
 
 struct Sale { string region; string product; int units; double revenue; }
@@ -51,6 +51,52 @@ void app(St st)
 	st.subheader("st.dataframe");
 	st.dataframe(filtered, height: 250);
 
+	st.subheader("Column configuration, totals and colours");
+	alias C = ColumnConfig;
+	auto report = new DataFrame()
+		.addColumn("region", ["North", "South", "East", "West"])
+		.addColumn("units", [120, 95, 143, 88])
+		.addColumn("revenue", [12_500.5, 9_800.0, 15_230.25, 7_100.0])
+		.addColumn("share", [28.0, 22.0, 34.0, 16.0])
+		.addColumn("change", [13.6, -5.8, 16.3, -4.1])
+		.addColumn("target", [80, 65, 95, 50])
+		.addColumn("updated", ["2026-11-02", "2026-11-05", "2026-11-04", "2026-10-30"])
+		.addColumn("site", ["https://example.com/north", "https://example.com/south", "https://example.com/east",
+			"https://example.com/west"]);
+	st.dataframe(report, hideIndex: true, columnConfig: [
+		"region": C.text("Region", pinned: true),
+		"units": C.number("Units", format: "%d", group: "This month"),
+		"revenue": C.number("Revenue", format: "%,.0f", background: "heat", detailColumn: "share", group: "This month"),
+		"share": C.number(format: "%.0f%% of total", hidden: true),
+		"change": C.number("Change", format: "%+.1f%%", color: "sign", help: "Compared with last month", group: "This month"),
+		"target": C.progress("Target reached", min: 0, max: 100, format: "%d%%"),
+		"updated": C.date("Updated", format: "DD.MM.YYYY"),
+		"site": C.link("Site", displayText: "Open"),
+	], totals: ["region": "Total", "units": "sum", "revenue": "sum", "change": "mean"],
+		cellStyle: (size_t row, string col, Json v) => col == "units" && v.get!long < 100 ? "bg:warning" : null);
+
+	st.subheader("Selection and tree rows");
+	auto brands = new DataFrame()
+		.addColumn("manager", ["Ann", "Ann", "Ann", "Bob", "Bob"])
+		.addColumn("supplier", ["ACME", "ACME", "Globex", "Initech", "Initech"])
+		.addColumn("brand", ["Rocket", "Anvil", "Gizmo", "Stapler", "Printer"])
+		.addColumn("orders", [12, 7, 9, 4, 11])
+		.addColumn("amount", [1_200.0, 650.0, 980.0, 210.0, 1_500.0])
+		.addColumn("id", ["b1", "b2", "b3", "b4", "b5"]);
+	// a tree: manager › supplier › brand, with sums per group; click a row to select it
+	auto pick = st.dataframe(brands, hideIndex: true, groupBy: ["manager", "supplier"], expanded: 1,
+		totals: ["brand": "Total", "orders": "sum", "amount": "sum"], onSelect: "rerun", rowKey: "id", key: "brands",
+		columnConfig: ["id": C.hide(), "brand": C.text("Brand"), "amount": C.number("Amount", format: "%,.0f")]);
+	if (pick.keys.length)
+		st.write("Selected brand:", pick.keys[0].get!string);
+	else if (pick.group.length)
+		st.write("Selected group:", pick.group.join(" › "));
+	else
+		st.caption("Click a brand or a group.");
+	// several rows (checkboxes, Shift-click for a range)
+	auto many = st.dataframe(df.head(6), height: 260, onSelect: "rerun", selectionMode: "multi-row", key: "multi");
+	st.write("Selected rows:", many.rows.to!string);
+
 	st.subheader("Charts");
 	auto c = st.columns(2);
 	c[0].barChart(filtered.groupBy("region", ["units", "revenue"], "sum"), x: "region", y: ["units"]);
@@ -65,7 +111,12 @@ void app(St st)
 		.addColumn("task", ["Write D code", "Run tests", "Ship it"])
 		.addColumn("done", [true, false, false])
 		.addColumn("hours", [3, 1, 2]);
-	auto edited = st.dataEditor(todo, numRows: "dynamic", key: "todo");
+	todo.addColumn("priority", ["high", "normal", "low"]);
+	auto edited = st.dataEditor(todo, numRows: "dynamic", key: "todo", columnConfig: [
+		"task": ColumnConfig.text("Task", required: true),
+		"hours": ColumnConfig.number("Hours", min: 0, max: 24, step: 1),
+		"priority": ColumnConfig.select("Priority", ["high", "normal", "low"], required: true),
+	]);
 	st.write(format("Total hours: **%.0f**, done: **%d/%d**", edited.sum("hours"),
 		edited.filter(r => r.get!bool("done")).length, edited.length));
 

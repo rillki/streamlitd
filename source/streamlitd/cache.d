@@ -18,6 +18,33 @@ private __gshared Entry[string][string] caches; // function id -> args key -> en
 private __gshared Mutex cacheLock;
 shared static this() { cacheLock = new Mutex; }
 
+/// A value being computed: other callers wait for it instead of computing it again.
+private final class Flight
+{
+	import vibe.core.sync : ManualEvent;
+	shared(ManualEvent) ev;
+	shared bool done;
+}
+private __gshared Flight[string] inflight; // "<function id>\x1e<args key>" -> computation (under cacheLock)
+
+/// Wait until `f` is done: vibe.d tasks yield; plain threads (tests, `main`) sleep briefly.
+private void waitFor(Flight f)
+{
+	import core.atomic : atomicLoad;
+	import vibe.core.task : Task;
+	if (Task.getThis() == Task.init)
+	{
+		import core.thread : Thread;
+		import core.time : msecs;
+		while (!atomicLoad(f.done))
+			Thread.sleep(1.msecs);
+		return;
+	}
+	auto c = f.ev.emitCount;
+	while (!atomicLoad(f.done))
+		c = f.ev.wait(c);
+}
+
 private string argsKey(Args...)(Args args)
 {
 	import vibe.data.json : serializeToJsonString;
@@ -34,23 +61,53 @@ private string argsKey(Args...)(Args args)
 
 private ReturnType!fn cachedCall(alias fn, long ttlSeconds, size_t maxEntries)(Parameters!fn args)
 {
+	import core.atomic : atomicStore;
+	import vibe.core.sync : createSharedManualEvent;
 	enum id = fullyQualifiedName!fn ~ "#" ~ ttlSeconds.to!string;
 	auto k = argsKey(args);
-	auto now = Clock.currTime;
-	synchronized (cacheLock)
+	auto fk = id ~ "\x1e" ~ k;
+	for (;;)
 	{
-		if (auto c = id in caches)
-			if (auto e = k in *c)
+		auto now = Clock.currTime;
+		Flight f;
+		bool mine;
+		synchronized (cacheLock)
+		{
+			if (auto c = id in caches)
+				if (auto e = k in *c)
+				{
+					if (ttlSeconds == 0 || now - e.created < ttlSeconds.seconds)
+						return e.value.get!(ReturnType!fn);
+					(*c).remove(k);
+				}
+			// several sessions missing the same key at once compute it once; the others wait
+			if (auto p = fk in inflight)
+				f = *p;
+			else
 			{
-				if (ttlSeconds == 0 || now - e.created < ttlSeconds.seconds)
-					return e.value.get!(ReturnType!fn);
-				(*c).remove(k);
+				f = new Flight;
+				f.ev = createSharedManualEvent();
+				inflight[fk] = f;
+				mine = true;
 			}
+		}
+		if (!mine)
+		{
+			waitFor(f);
+			continue; // now cached; or the computation failed and this caller tries itself
+		}
+		scope (exit)
+		{
+			synchronized (cacheLock)
+				inflight.remove(fk);
+			atomicStore(f.done, true);
+			f.ev.emit();
+		}
+		auto v = fn(args); // outside the lock
+		synchronized (cacheLock)
+			storeEntry(id, k, Variant(v), now, maxEntries);
+		return v;
 	}
-	auto v = fn(args); // computed outside the lock; concurrent misses may compute twice
-	synchronized (cacheLock)
-		storeEntry(id, k, Variant(v), now, maxEntries);
-	return v;
 }
 
 private void storeEntry(string id, string k, Variant v, SysTime now, size_t maxEntries)
@@ -81,8 +138,10 @@ template cacheData(alias fn, long ttlSeconds = 0, size_t maxEntries = 0)
 	ReturnType!fn cacheData(Parameters!fn args)
 	{
 		auto v = cachedCall!(fn, ttlSeconds, maxEntries)(args);
-		static if (is(typeof(v.dup) : ReturnType!fn))
-			return v is null ? v : v.dup;
+		// `v.dup()` with parentheses: for a class method such as `DataFrame.dup`, `typeof(v.dup)` is
+		// the function's type, which would silently skip the copy and share the cached object
+		static if (is(typeof(v.dup()) : ReturnType!fn))
+			return v is null ? v : v.dup();
 		else
 			return v;
 	}
@@ -155,4 +214,35 @@ unittest
 	cacheData!(square, 0, 1)(1);
 	cacheData!(square, 0, 1)(2);
 	assert(caches.values[0].length == 1);
+}
+
+unittest
+{
+	// several threads missing the same key at once: computed once, the others wait for it
+	import core.atomic : atomicOp, atomicLoad;
+	import core.thread : Thread;
+	import core.time : msecs;
+	import std.algorithm : all;
+	static shared int computed;
+	static int slow(int x) { atomicOp!"+="(computed, 1); Thread.sleep(150.msecs); return x * 10; }
+	cacheClear!slow();
+	int[8] got;
+	Thread[] ts;
+	Thread worker(size_t i) { return new Thread({ got[i] = cacheData!slow(4); }); } // one i per thread
+	foreach (i; 0 .. 8)
+	{
+		auto t = worker(i);
+		ts ~= t;
+		t.start();
+	}
+	foreach (t; ts)
+		t.join();
+	assert(atomicLoad(computed) == 1, atomicLoad(computed).to!string);
+	assert(got[].all!(v => v == 40));
+	// a computation that throws lets the next caller try again
+	static shared int tries;
+	static int flaky(int x) { if (atomicOp!"+="(tries, 1) == 1) throw new Exception("first try fails"); return x; }
+	import std.exception : assertThrown;
+	assertThrown(cacheData!flaky(1));
+	assert(cacheData!flaky(1) == 1 && atomicLoad(tries) == 2);
 }

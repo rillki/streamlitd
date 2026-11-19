@@ -6,7 +6,8 @@ const { url, waitIdle, rerun, widget, pick, expect } = require("./helpers");
 
 test.describe.configure({ mode: "serial" });
 
-const root = { user: "root", name: "Root Admin", pw: "blue horse 7" };
+// the demo login of every example: alice / streamlitd-demo (here the first sign-up, so the admin)
+const root = { user: "alice", name: "Alice", pw: "streamlitd-demo" };
 const mia = { user: "mia", name: "Mia Lane", pw: "green tree 42" };
 
 async function login(page, u, pw) {
@@ -34,7 +35,7 @@ test("the first sign-up becomes the administrator (no hashes to make)", async ({
   await expect(page.getByLabel("Invite code")).toHaveCount(0); // the first account needs no invite
   await register(page, root);
   await waitIdle(page, 1);
-  await expect(page.locator("h1")).toContainText("Welcome, Root Admin");
+  await expect(page.locator("h1")).toContainText("Welcome, Alice");
   await expect(page.getByText("Roles: admin.")).toBeVisible();
   await expect(page.getByTestId("st-top-nav").getByText("Admin")).toBeVisible();
   // sign-up is now by invite only
@@ -82,7 +83,7 @@ test("invites, roles and disabling (they apply at once)", async ({ page, browser
   await waitIdle(p2, 1);
   await expect(p2.locator("h1")).toContainText("Reports");
   const api = await page.request.get(url("accounts", "/api/users"));
-  expect(await api.json()).toEqual({ users: ["root", "mia"] });
+  expect(await api.json()).toEqual({ users: ["alice", "mia"] });
 
   // disabling ends mia's login
   await rerun(page, () => page.getByRole("button", { name: "Disable" }).click());

@@ -64,6 +64,8 @@ struct AuthConfig
 	Accounts accounts;
 	/// Failed-login counters.
 	LoginThrottle throttle;
+	/// Successful sign-ups per address (`[auth] signups_per_hour`).
+	LoginThrottle signups;
 	/// Take the client address from `X-Forwarded-For`, as added by the proxy (`[server] trustProxy`).
 	bool trustProxy;
 	/// Extra origins allowed to post the forms (`[server] allowedOrigins`).
@@ -163,6 +165,8 @@ AuthConfig loadAuthConfig(Json configAuth, Json secretsAuth, string basePath, Us
 		s.maxIpFailures = cast(uint) rl["max_ip_failures"].opt!long(s.maxIpFailures);
 		s.throttleMinutes = cast(uint) rl["minutes"].opt!long(s.throttleMinutes);
 	}
+	if (a["signups_per_hour"].type == Json.Type.int_)
+		s.signupsPerHour = cast(uint) a["signups_per_hour"].get!long;
 
 	if (secret is null && hasSection)
 		secret = readOrCreateSecret(secretPathFor(s.usersFile)); // kept next to the user store
@@ -185,6 +189,7 @@ AuthConfig loadAuthConfig(Json configAuth, Json secretsAuth, string basePath, Us
 	c.cookieSecret = cast(immutable(ubyte)[]) secret;
 	c.accounts = new Accounts(s, store, c.users, c.cookieSecret, basePath);
 	c.throttle = new LoginThrottle(s.maxFailures, s.maxIpFailures, s.throttleMinutes);
+	c.signups = new LoginThrottle(0, s.signupsPerHour, 60);
 	return c;
 }
 
@@ -565,6 +570,11 @@ void registerAuthRoutes(URLRouter router, AuthConfig* c)
 			return cast(void) err("The form expired. Please try again.", 403);
 		if (c.throttle.blocked(null, ip))
 			return cast(void) err(throttleMessage(c), 429);
+		if (c.signups !is null && c.signups.blocked(null, ip))
+		{
+			authLog("sign-up blocked (too many from this address) ip=" ~ ip);
+			return cast(void) err("Too many accounts were created from your address. Please try again later.", 429);
+		}
 		if (f.get("password", "") != f.get("password2", ""))
 			return cast(void) err("The passwords do not match.", 400);
 		StoredUser u;
@@ -577,6 +587,8 @@ void registerAuthRoutes(URLRouter router, AuthConfig* c)
 				c.throttle.fail(null, ip); // guessing invite codes counts as a failure
 			return cast(void) err(e.msg, 400);
 		}
+		if (c.signups !is null)
+			c.signups.fail(null, ip); // counts sign-ups, not failures
 		authLog("sign-up user=" ~ u.username ~ (u.isAdmin ? " (admin)" : "") ~ (u.pending ? " (pending)" : "") ~ " ip=" ~ ip);
 		if (u.pending)
 			return writePage(res, page(*c, "Thanks for signing up", `<p data-testid="pending">Your account <b>` ~ esc(u.username)
@@ -847,6 +859,19 @@ unittest
 	assert(su.enabled && su.hasPasswords && su.accounts.settings.registration == Registration.firstAdmin);
 	assert(su.accounts.signupOpen && su.accounts.settings.signupFields == ["name"]);
 	assertThrown(loadAuthConfig(parseJsonString(`{"cookie_secret":"0123456789abcdef!","signup_fields":["age"]}`), Json.emptyObject, ""));
+	// sign-ups per address: 10 an hour by default, configurable, 0 = no limit
+	assert(su.accounts.settings.signupsPerHour == 10);
+	auto lim = loadAuthConfig(parseJsonString(`{"cookie_secret":"0123456789abcdef!","registration":"open","signups_per_hour":2}`),
+		Json.emptyObject, "", new MemoryUserStore);
+	lim.signups.fail(null, "10.0.0.1");
+	assert(!lim.signups.blocked(null, "10.0.0.1"));
+	lim.signups.fail(null, "10.0.0.1");
+	assert(lim.signups.blocked(null, "10.0.0.1") && !lim.signups.blocked(null, "10.0.0.2"));
+	auto nolim = loadAuthConfig(parseJsonString(`{"cookie_secret":"0123456789abcdef!","registration":"open","signups_per_hour":0}`),
+		Json.emptyObject, "", new MemoryUserStore);
+	foreach (i; 0 .. 50)
+		nolim.signups.fail(null, "10.0.0.1");
+	assert(!nolim.signups.blocked(null, "10.0.0.1"));
 	auto payload = decodeJwtPayload("eyJhbGciOiJub25lIn0." ~ Base64URLNoPadding.encode(cast(const(ubyte)[]) `{"sub":"1"}`).idup ~ ".");
 	assert(payload["sub"].get!string == "1");
 }

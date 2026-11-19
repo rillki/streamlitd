@@ -148,6 +148,8 @@ final class AppSession
 	/// Fragments registered by the last full run (id -> info).
 	package FragmentInfo[string] fragments;
 	package FragmentInfo[string] newFragments;
+	/// Dialog bodies running now (innermost last), so `st.dialog` inside one nests in it.
+	package St[] dialogStack;
 	/// Ids of registered fragments (guarded by `lock`; readable from the receiving task).
 	private bool[string] knownFragments;
 	private string[][string] fragmentTopics; // fid → topics, under `lock` (read from other threads)
@@ -177,6 +179,73 @@ final class AppSession
 	package string[] navPagePaths;
 	/// Breadcrumb trail of the current page from `st.navigation` ([{label, urlPath}]), for `st.breadcrumbs()`.
 	package Json navCrumbs;
+
+	/// The browser request (`st.context`): set by the server on connect; locale, time zone and URL
+	/// are updated from the browser's messages. Guarded by `lock`.
+	private RequestContext ctx;
+
+	/// A file built on click (`downloadButton` with a delegate).
+	struct LazyDownload
+	{
+		const(ubyte)[] delegate() build;
+		string fileName;
+		string mime;
+	}
+	// token → download (under `lock`): the ones drawn by the last full run, plus fragment runs since
+	private LazyDownload[string] lazyDownloads, newLazyDownloads;
+	private string[string] lazyTokens; // widget id → token, stable across runs
+
+	/// Register a download built on click; returns its URL path (relative to the app's base).
+	package string registerLazyDownload(string widgetId, LazyDownload d)
+	{
+		import std.base64 : Base64URLNoPadding;
+		import streamlitd.auth : randomBytes;
+		synchronized (lock)
+		{
+			auto tok = lazyTokens.get(widgetId, null);
+			if (tok is null)
+				lazyTokens[widgetId] = tok = Base64URLNoPadding.encode(randomBytes(18)).idup;
+			if (runningFragment)
+				lazyDownloads[tok] = d;
+			else
+				newLazyDownloads[tok] = d;
+			return "_stcore/download/" ~ tok;
+		}
+	}
+
+	/// The download for a token, or null (thread-safe).
+	LazyDownload* lazyDownload(string token)
+	{
+		synchronized (lock)
+		{
+			if (auto p = token in lazyDownloads)
+			{
+				auto r = new LazyDownload;
+				*r = *p;
+				return r;
+			}
+			return null;
+		}
+	}
+
+	/// A copy of the request context (thread-safe).
+	RequestContext requestContext()
+	{
+		synchronized (lock)
+		{
+			auto c = ctx;
+			c.headers = ctx.headers.dup;
+			c.cookies = ctx.cookies.dup;
+			return c;
+		}
+	}
+
+	/// Set the request context (server, tests).
+	void setRequestContext(RequestContext c)
+	{
+		synchronized (lock)
+			ctx = c;
+	}
 
 	/// The logged-in user (`st.user`), or `Json(null)`. Set from the auth cookie on connect.
 	Json user;
@@ -338,6 +407,15 @@ final class AppSession
 				string fragment = msg["fragment"].opt!string(null);
 				synchronized (lock)
 				{
+					// what only the browser knows: language, time zone, page URL
+					auto cl = msg["client"];
+					if (cl.type == Json.Type.object)
+					{
+						if (cl["locale"].type == Json.Type.string) ctx.locale = cl["locale"].get!string;
+						if (cl["timezone"].type == Json.Type.string) ctx.timezone = cl["timezone"].get!string;
+						if (cl["timezoneOffset"].type == Json.Type.int_) ctx.timezoneOffset = cast(int) cl["timezoneOffset"].get!long;
+						if (cl["url"].type == Json.Type.string) ctx.url = cl["url"].get!string;
+					}
 					if (msg["query"].type == Json.Type.object)
 					{
 						string[string] q;
@@ -535,6 +613,8 @@ final class AppSession
 		{
 			mediaRefs = null;
 			newFragments = null;
+			synchronized (lock)
+				newLazyDownloads = null;
 			navCrumbs = Json.undefined;
 			refreshUser();
 			appAllowSwitch = true;
@@ -590,8 +670,13 @@ final class AppSession
 						m.onChange();
 			running = true;
 
+			scope (exit) dialogStack = null;
 			if (isFragment)
+			{
+				if (fragmentId.length > 2 && fragmentId[0 .. 2] == "d:")
+					dialogStack = [root]; // a dialog rerunning alone: dialogs opened in it nest in it
 				frag.fn(root);
+			}
 			else
 				appFn(root);
 		}
@@ -634,11 +719,16 @@ final class AppSession
 				widgetMeta[k] = v;
 			foreach (k, v; newFragments)
 				fragments[k] = v;
+			synchronized (lock)
+				foreach (k, v; newLazyDownloads)
+					lazyDownloads[k] = v;
 		}
 		else
 		{
 			widgetMeta = newWidgetMeta;
 			fragments = newFragments;
+			synchronized (lock)
+				lazyDownloads = newLazyDownloads; // downloads no longer drawn stop working
 			string[] gone;
 			foreach (k, _; widgetValues)
 				if (k !in seenIds)

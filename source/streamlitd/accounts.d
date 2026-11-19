@@ -511,6 +511,9 @@ struct AccountSettings
 	uint maxFailures = 5;
 	uint maxIpFailures = 20;
 	uint throttleMinutes = 15;
+	/// successful sign-ups per client address and hour (0 = no limit): keeps scripts from
+	/// creating thousands of accounts where sign-up is open
+	uint signupsPerHour = 10;
 }
 
 /// Outcome of a password check.

@@ -23,7 +23,8 @@ Python keyword arguments: `st.slider("x", 0, 10, 5, step: 2, key: "s")`. Python'
 | `st.title("T", anchor=, help=)` | `st.title("T", anchor:, help:)` |
 | `st.header("H", divider="blue")`, `st.subheader` | `st.header("H", divider: "blue")`, `st.subheader` (also `anchor:`, `help:`) |
 | `st.markdown(md, unsafe_allow_html=True)` | `st.markdown(md, unsafeAllowHtml: true)` |
-| `:red[text]`, `:blue-background[text]` in markdown | supported |
+| (escape user text by hand) | `st.markdown("**" ~ escapeMarkdown(userText) ~ "**")`: text people typed, shown as typed |
+| `:red[text]`, `:blue-background[text]`, `:blue-badge[text]` in markdown | supported |
 | `$x^2$` / `$$...$$` in markdown | supported (KaTeX) |
 | `st.caption`, `st.text`, `st.divider()` | `st.caption`, `st.text`, `st.divider()` |
 | `st.code(src, language="python", line_numbers=True)` | `st.code(src, "python", lineNumbers: true)` (syntax highlighted) |
@@ -44,6 +45,11 @@ Python keyword arguments: `st.slider("x", 0, 10, 5, step: 2, key: "s")`. Python'
 | `with st.status("Working") as s: ...; s.update(label=, state="complete")` | `auto s = st.status("Working"); s.write(...); s.update(label: "Done", state: "complete");` |
 | `st.balloons()`, `st.snow()` | same |
 | `st.metric("A", 42, "+3", delta_color="inverse", border=True)` | `st.metric("A", 42, "+3", deltaColor: "inverse", border: true)` |
+| `st.metric(..., chart_data=[...], chart_type="area")` | `st.metric(..., chartData: [...], chartType: "area", caption: "was 40")` |
+| `st.context.headers`, `.cookies`, `.ip_address`, `.locale`, `.timezone`, `.url` | `st.context.header("X")`, `.cookie("x")`, `.ip`, `.locale`, `.timezone`, `.url` |
+| `st.download_button(data=lambda: build())` | `st.downloadButton("Export", () => build(), "f.csv")` (built on click) |
+| (no equivalent) | `st.calendarGrid(rows, items, start, end)` (a schedule grid; returns the clicked item), `st.dialog` inside a dialog (stacked dialogs) |
+| (no equivalent) | `st.emptyState`, `st.legend`, `st.proportionBar`, `st.feed`, `st.details(rows, inline: true)`, `card(..., link:)`, `Page(..., badge:)`, `navigation(..., sections: "collapsible")`, `st.resetWidgets(keys)` |
 | `st.json(obj, expanded=False)` | `st.json(jsonValueOrText, expanded: false)`; any D value (struct, AA, array): `st.jsonOf!T(obj, expanded: false)` or `st.jsonOf(obj)` |
 
 ## Input widgets
@@ -60,6 +66,7 @@ Python keyword arguments: `st.slider("x", 0, 10, 5, step: 2, key: "s")`. Python'
 | options of any type + `format_func=` | `st.radioOf!T`, `selectboxOf!T`, `multiselectOf!T`, `selectSliderOf!T`, `pillsOf!T`, `segmentedControlOf!T` with `formatFunc:` | `T` / `T[]` |
 | `st.pills("P", opts)` / `selection_mode="multi"` | `st.pills("P", opts)` / `st.pillsMulti("P", opts, default)` | `string` / `string[]` |
 | `st.segmented_control(...)` | `st.segmentedControl(...)` / `st.segmentedControlMulti(...)` | `string` / `string[]` |
+| (no equivalent) | `st.segmentedControl(..., required: true)`, `st.pills(..., required: true)`: always one option | `string` |
 | `st.feedback("stars")` | `st.feedback("stars")` (`"thumbs"`, `"faces"`, `"stars"`) | index, `-1` = none |
 | `st.slider("S", 0, 100, 25, step=5)` | `st.slider("S", 0, 100, 25, step: 5)` | `int` (also `long`, `double`) |
 | `st.slider("R", 0.0, 1.0, (0.2, 0.8))` | `st.slider("R", 0.0, 1.0, [0.2, 0.8])` | `double[2]` (also `int[2]`) |
@@ -74,7 +81,7 @@ Python keyword arguments: `st.slider("x", 0, 10, 5, step: 2, key: "s")`. Python'
 | `st.file_uploader("F", type=["csv"])` | `st.fileUploader("F", ["csv"])` | `UploadedFile` or `null` (`.name`, `.type`, `.size`, `.bytes`, `.text`) |
 | `st.file_uploader(..., accept_multiple_files=True)` | `st.fileUploaderMulti(...)` | `UploadedFile[]` |
 | `st.chat_input("Say")` | `if (auto p = st.chatInput("Say")) ...` | `string` or `null` |
-| `st.data_editor(df, num_rows="dynamic", disabled=[...])` | `st.dataEditor(df, numRows: "dynamic", disabled: [...])` | edited `DataFrame` |
+| `st.data_editor(df, num_rows="dynamic", disabled=[...])` | `st.dataEditor(df, numRows: "dynamic", disabled: [...])` | edited `DataFrame`; `maxRows:` caps the rows (streamlitd only) |
 
 Common widget parameters: `key:`, `help:`, `onChange:` (`onClick:` for buttons), `disabled:`
 and `labelVisibility: "visible" | "hidden" | "collapsed"`.
@@ -93,6 +100,7 @@ and `labelVisibility: "visible" | "hidden" | "collapsed"`.
 | `with st.form("f", clear_on_submit=True): ...; st.form_submit_button()` | `auto f = st.form("f", clearOnSubmit: true); ...; f.formSubmitButton("Send")` |
 | `with st.chat_message("user"):` | `with (st.chatMessage("user")) { ... }` |
 | `@st.dialog("Title")` + call | `st.dialog("Title", (St d) { ... }, width: "large")` |
+| `@st.dialog("Title", on_dismiss=fn)` | `st.dialog("Title", (St d) { ... }, onDismiss: { ... })` |
 | `@st.fragment(run_every=5)` + call | `st.fragment((St f) { ... }, runEvery: 5)` |
 | (no equivalent) | `st.fragment(..., runEvery: 10, refreshWhen: () => changed)`, `st.fragment(..., refreshOn: "orders")` + `refreshFragments("orders")` from any thread, `st.fragment(...).refresh()` ([events](concepts.md#updates-driven-by-events)) |
 | `st.date_input("Period", (start, end))` | `DateRange r = st.dateRangeInput("Period", DateRange(start, end));` |
@@ -110,9 +118,15 @@ and `labelVisibility: "visible" | "hidden" | "collapsed"`.
 | `df.sort_values("a", ascending=False)` | `df.sortBy("a", false)` |
 | `df.groupby("k")["v"].sum().reset_index()` | `df.groupBy("k", ["v"], "sum")` (`sum`, `mean`, `count`, `min`, `max`) |
 | `df["a"].sum()`, `.mean()` | `df.sum("a")`, `df.mean("a")`, `df.min`, `df.max` |
-| `df.to_csv()` | `df.toCsv()` |
+| `df.to_csv()` | `df.toCsv()`; `df.toCsv(',', true)` defuses `=…` formulas in text cells for Excel |
 | `st.dataframe(df, height=, hide_index=True, column_order=)` | `st.dataframe(df, height:, hideIndex: true, columnOrder:)` |
 | `st.table(df)` | `st.table(df)` |
+| `st.dataframe(df, column_config={"a": st.column_config.NumberColumn("A", format="%.1f%%")})` | `st.dataframe(df, columnConfig: ["a": ColumnConfig.number("A", format: "%.1f%%")])` |
+| `TextColumn`, `NumberColumn`, `DateColumn`, `DatetimeColumn`, `CheckboxColumn`, `SelectboxColumn`, `ProgressColumn`, `LinkColumn`, `Column` | `ColumnConfig.text`, `.number`, `.date`, `.datetime`, `.checkbox`, `.select`, `.progress`, `.link`, `.column`; `.hide()` / `hidden: true` |
+| `df.style.background_gradient()`, `.map(color_fn)` (pandas Styler) | `columnConfig: [..: ColumnConfig.number(background: "heat", color: "sign")]`, `cellStyle: (row, col, v) => "bg:success"` |
+| (no equivalent) | `totals: ["name": "Total", "amount": "sum"]`, `group:` (grouped headers), `detailColumn:` (a second line) |
+| `event = st.dataframe(df, on_select="rerun", selection_mode="multi-row")`; `event.selection.rows` | `auto sel = st.dataframe(df, onSelect: "rerun", selectionMode: "multi-row", key: "t")`; `sel.rows`, `sel.keys` (with `rowKey:`), `sel.cells` |
+| (no equivalent) | `st.dataframe(df, groupBy: ["manager", "supplier"], totals: [...], expanded: 1)`: tree rows; `sel.group` |
 | `st.line_chart(df, x="d", y=["a","b"], color=)` | `st.lineChart(df, x: "d", y: ["a", "b"], color:)` |
 | `st.bar_chart(..., horizontal=True, stack=False)` | `st.barChart(..., horizontal: true, stack: false)` |
 | `st.area_chart`, `st.scatter_chart(size=)` | `st.areaChart`, `st.scatterChart(size:)` |
